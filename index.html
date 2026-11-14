@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>NC3000 · logger sola lettura</title>
+<title>NC3000 · richieste dati</title>
 <style>
   body { font-family: system-ui, sans-serif; margin: 0; padding: 12px; background: #111; color: #eee; }
   h3 { margin: 8px 0; }
@@ -15,27 +15,27 @@
   .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 6px 0; }
   .note { font-size: 13px; color: #aaa; }
   canvas { width: 100%; height: 220px; background: #000; border-radius: 6px; display: block; }
-  #log { font-family: monospace; font-size: 12px; height: 240px; overflow: auto; background: #000; padding: 6px; white-space: pre; border-radius: 6px; }
+  #log { font-family: monospace; font-size: 12px; height: 260px; overflow: auto; background: #000; padding: 6px; white-space: pre; border-radius: 6px; }
 </style>
 </head>
 <body>
 
-<h3>NC3000 · sola lettura</h3>
-<p class="note">Questa pagina non scrive comandi: non chiama mai la scrittura. Dopo la connessione elenca le caratteristiche dei servizi noti, legge quelle leggibili e si iscrive solo a quelle che inviano notifiche o indicazioni. Connetti azzera il registro precedente: esporta prima il CSV.</p>
+<h3>NC3000 · richieste dati</h3>
+<p class="note">Invia solo due tipi di messaggio, come fa l'app ufficiale mentre mostra i dati: il battito (0xEE) e la richiesta di dati per canale (0x91). Non ci sono comandi di avvio, arresto o impostazioni: il codice accetta solo questi due, e ogni invio è nel registro.</p>
 
 <div class="row">
   <button id="btnConnect">Connetti</button>
+  <button id="btnStart" disabled>Avvia richieste</button>
   <button id="btnStop" disabled>Ferma</button>
-  <button id="btnRead" disabled>Leggi tutte</button>
   <button id="btnExport" disabled>Esporta CSV</button>
 </div>
 <p id="status">Non connesso</p>
-<p class="note">Pacchetti: <span id="count">0</span> · byte: <span id="bytes">0</span></p>
+<p class="note">Inviati: <span id="tx">0</span> · risposte valide: <span id="rxok">0</span> · non valide: <span id="rxbad">0</span></p>
 
 <h4>Campo da tracciare</h4>
-<p class="note">Il filtro sceglie la caratteristica (parte dell'UUID, es. 8fe0 oppure ffe1). Vuoto = tutte.</p>
+<p class="note">Il formato della risposta non è ancora noto. Offset è la posizione nel pacchetto ricevuto, byte 0 = 0F. Il grafico mostra le risposte al comando 0x91; il canale (mask 1, 2, 4, 8) è facoltativo.</p>
 <div class="row">
-  <label>Filtro <input type="text" id="filter" placeholder="vuoto = tutte" size="14"></label>
+  <label>Canale (mask) <input type="number" id="mask" placeholder="vuoto = tutti" min="1" max="8"></label>
 </div>
 <div class="row">
   <label>Offset <input type="number" id="offset" value="0" min="0"></label>
@@ -54,28 +54,31 @@
 <div id="log"></div>
 
 <script>
-const SERVICES = [
-  '0000ffe0-0000-1000-8000-00805f9b34fb',
-  '0000fe78-0000-1000-8000-00805f9b34fb',
-  '0000fdb4-0000-1000-8000-00805f9b34fb',
-  '7365a0ae-e596-129d-d84a-88db1ffbcc04'
-];
+const SVC = '0000ffe0-0000-1000-8000-00805f9b34fb';
+const CHR = '0000ffe1-0000-1000-8000-00805f9b34fb';
+const CMD_HEARTBEAT = 0xEE;
+const CMD_NC_DATA = 0x91;
+const MASKS = [1, 2, 4, 8];
 const MAX_RECORDS = 200000;
 
 let device = null;
-let chars = [];
+let char = null;
+let useWnR = true;
+let pollTimer = null;
+let beatTimer = null;
+let maskIdx = 0;
+let writeQueue = Promise.resolve();
+let rxBuf = [];
 let records = [];
-let pktCount = 0;
-let totalBytes = 0;
 let t0 = 0;
 let lastDraw = 0;
+let txCount = 0, rxOk = 0, rxBad = 0;
 let logLines = [];
 
 const $ = id => document.getElementById(id);
-const short = uuid => uuid.slice(0, 8);
 
-function toHex(bytes) {
-  return Array.from(bytes, b => b.toString(16).padStart(2, '0')).join(' ');
+function hex(arr) {
+  return Array.from(arr, b => b.toString(16).padStart(2, '0')).join(' ');
 }
 
 function addLog(line) {
@@ -85,72 +88,118 @@ function addLog(line) {
   $('log').scrollTop = $('log').scrollHeight;
 }
 
-function fieldValue(bytes, off, type) {
-  if (type === 'u8') return off < bytes.length ? bytes[off] : null;
-  if (off + 1 >= bytes.length) return null;
-  return type === 'u16le'
-    ? bytes[off] | (bytes[off + 1] << 8)
-    : (bytes[off] << 8) | bytes[off + 1];
+// Formato: 0F | lunghezza (= totale - 2) | comando | dati... | checksum
+function buildFrame(cmd, payload) {
+  const n = payload.length;
+  const f = new Uint8Array(n + 4);
+  f[0] = 0x0F;
+  f[1] = (n + 2) & 0xFF;
+  f[2] = cmd & 0xFF;
+  f.set(payload, 3);
+  let sum = 0;
+  for (let i = 2; i <= n + 2; i++) sum += f[i];
+  f[n + 3] = sum & 0xFF;
+  return f;
 }
 
-function matchesFilter(uuid) {
-  const f = $('filter').value.trim().toLowerCase();
-  return !f || uuid.toLowerCase().includes(f);
+function checksumOk(f) {
+  if (f.length < 5 || f[0] !== 0x0F) return false;
+  let sum = 0;
+  for (let i = 2; i <= f.length - 2; i++) sum += f[i];
+  return (sum & 0xFF) === f[f.length - 1];
 }
 
-function onData(ev) {
-  const c = ev.target;
-  const dv = c.value;
-  const bytes = new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength).slice();
+// Unico punto di invio: accetta solo battito e richiesta dati per canale
+function send(cmd, payload) {
+  const allowed =
+    (cmd === CMD_HEARTBEAT && payload.length === 1 && payload[0] === 0x00) ||
+    (cmd === CMD_NC_DATA && payload.length === 1 && MASKS.includes(payload[0]));
+  if (!allowed) throw new Error('comando non consentito');
+  const f = buildFrame(cmd, payload);
+  writeQueue = writeQueue.then(async () => {
+    if (!char || !device || !device.gatt.connected) return;
+    if (useWnR) await char.writeValueWithoutResponse(f);
+    else await char.writeValue(f);
+    txCount++;
+    $('tx').textContent = txCount;
+    addLog('TX  ' + hex(f));
+  }).catch(e => addLog('errore invio: ' + e.message));
+  return writeQueue;
+}
+
+function handleFrame(f) {
   const t = (Date.now() - t0) / 1000;
-
-  records.push({ t, uuid: c.uuid, bytes });
+  const ok = checksumOk(f);
+  const cmd = f[2];
+  const mask = f.length > 8 ? f[8] : null;
+  if (ok) rxOk++; else rxBad++;
+  $('rxok').textContent = rxOk;
+  $('rxbad').textContent = rxBad;
+  records.push({ t, cmd, ok, mask, bytes: f });
   if (records.length > MAX_RECORDS) records.shift();
-  pktCount++;
-  totalBytes += bytes.length;
-
-  $('count').textContent = pktCount;
-  $('bytes').textContent = totalBytes;
-  addLog(t.toFixed(1).padStart(8) + ' s  ' + short(c.uuid) + '  ' + toHex(bytes));
-
+  addLog(t.toFixed(1).padStart(8) + ' s  RX ' + (ok ? 'ok ' : 'ERR') + ' cmd ' +
+         cmd.toString(16).padStart(2, '0') + (mask !== null ? ' mask ' + mask : '') + '  ' + hex(f));
   if (performance.now() - lastDraw > 500) {
     lastDraw = performance.now();
     drawChart();
   }
 }
 
-async function discover(server) {
-  for (const svcUuid of SERVICES) {
-    let svc;
-    try {
-      svc = await server.getPrimaryService(svcUuid);
-    } catch (e) {
-      addLog('servizio assente: ' + short(svcUuid));
+function onData(ev) {
+  const dv = ev.target.value;
+  for (let i = 0; i < dv.byteLength; i++) rxBuf.push(dv.getUint8(i));
+  while (rxBuf.length) {
+    const s = rxBuf.indexOf(0x0F);
+    if (s < 0) {
+      addLog('RX scartati: ' + hex(rxBuf));
+      rxBuf = [];
+      break;
+    }
+    if (s > 0) {
+      addLog('RX scartati: ' + hex(rxBuf.slice(0, s)));
+      rxBuf = rxBuf.slice(s);
+    }
+    if (rxBuf.length < 2) break;
+    const total = rxBuf[1] + 2;
+    if (total < 5) {
+      rxBuf = rxBuf.slice(1);
       continue;
     }
-    addLog('servizio ' + short(svcUuid));
-    const list = await svc.getCharacteristics();
-    for (const c of list) {
-      const p = c.properties;
-      const tags = [
-        p.read && 'R',
-        p.write && 'W',
-        p.writeWithoutResponse && 'WnR',
-        p.notify && 'N',
-        p.indicate && 'I'
-      ].filter(Boolean).join(' ');
-      addLog('  ' + short(c.uuid) + '  ' + tags);
-      chars.push(c);
-      if (p.notify || p.indicate) {
-        c.addEventListener('characteristicvaluechanged', onData);
-        try {
-          await c.startNotifications();
-        } catch (e) {
-          addLog('    notifiche non attive: ' + e.message);
-        }
-      }
-    }
+    if (rxBuf.length < total) break;
+    const frame = Uint8Array.from(rxBuf.slice(0, total));
+    rxBuf = rxBuf.slice(total);
+    handleFrame(frame);
   }
+}
+
+function startPolling() {
+  if (pollTimer) return;
+  maskIdx = 0;
+  pollTimer = setInterval(() => {
+    try { send(CMD_NC_DATA, [MASKS[maskIdx]]); } catch (e) { addLog(e.message); }
+    maskIdx = (maskIdx + 1) % MASKS.length;
+  }, 250);
+  beatTimer = setInterval(() => {
+    try { send(CMD_HEARTBEAT, [0x00]); } catch (e) { addLog(e.message); }
+  }, 3000);
+  $('btnStart').disabled = true;
+  $('btnStop').disabled = false;
+  $('status').textContent = 'Richieste in corso';
+}
+
+function stopPolling() {
+  if (pollTimer) clearInterval(pollTimer);
+  if (beatTimer) clearInterval(beatTimer);
+  pollTimer = null;
+  beatTimer = null;
+}
+
+function onDisconnect() {
+  stopPolling();
+  $('status').textContent = 'Disconnesso: ' + rxOk + ' risposte valide';
+  $('btnConnect').disabled = false;
+  $('btnStart').disabled = true;
+  $('btnStop').disabled = true;
 }
 
 async function connect() {
@@ -162,93 +211,79 @@ async function connect() {
     $('status').textContent = 'Scelta dispositivo…';
     device = await navigator.bluetooth.requestDevice({
       filters: [{ namePrefix: '#Charger' }],
-      optionalServices: SERVICES
+      optionalServices: [SVC]
     });
     device.addEventListener('gattserverdisconnected', onDisconnect);
-
     $('status').textContent = 'Connessione…';
     const server = await device.gatt.connect();
+    const svc = await server.getPrimaryService(SVC);
+    char = await svc.getCharacteristic(CHR);
+    useWnR = !!char.properties.writeWithoutResponse;
+    if (!useWnR && !char.properties.write) throw new Error('caratteristica non scrivibile');
 
+    rxBuf = [];
     records = [];
-    chars = [];
-    pktCount = 0;
-    totalBytes = 0;
+    txCount = 0; rxOk = 0; rxBad = 0;
     logLines = [];
     t0 = Date.now();
+    $('tx').textContent = 0;
+    $('rxok').textContent = 0;
+    $('rxbad').textContent = 0;
 
-    await discover(server);
+    char.addEventListener('characteristicvaluechanged', onData);
+    await char.startNotifications();
 
-    const listening = chars.filter(c => c.properties.notify || c.properties.indicate).length;
-    $('status').textContent = 'Connesso: in ascolto su ' + listening + ' caratteristiche';
+    $('status').textContent = 'Connesso. Premi Avvia richieste.';
+    addLog('Connesso. Notifiche attive.');
     $('btnConnect').disabled = true;
-    $('btnStop').disabled = false;
-    $('btnRead').disabled = false;
+    $('btnStart').disabled = false;
     $('btnExport').disabled = false;
   } catch (e) {
     $('status').textContent = 'Errore: ' + e.message;
   }
 }
 
-async function readAll() {
-  for (const c of chars) {
-    if (!c.properties.read) continue;
-    try {
-      const dv = await c.readValue();
-      const bytes = new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength).slice();
-      addLog('LETTURA ' + short(c.uuid) + '  ' + (bytes.length ? toHex(bytes) : '(vuoto)'));
-    } catch (e) {
-      addLog('Errore lettura ' + short(c.uuid) + ': ' + e.message);
-    }
-  }
-}
-
 async function stop() {
-  for (const c of chars) {
-    try {
-      if (c.properties.notify || c.properties.indicate) {
-        c.removeEventListener('characteristicvaluechanged', onData);
-        await c.stopNotifications();
-      }
-    } catch (e) {
-      // già chiusa
+  stopPolling();
+  try {
+    if (char) {
+      char.removeEventListener('characteristicvaluechanged', onData);
+      await char.stopNotifications();
     }
-  }
+  } catch (e) { /* già chiusa */ }
   if (device && device.gatt.connected) device.gatt.disconnect();
-  $('status').textContent = 'Fermata: ' + pktCount + ' pacchetti registrati';
+  $('status').textContent = 'Fermato: ' + rxOk + ' risposte valide';
   $('btnConnect').disabled = false;
+  $('btnStart').disabled = true;
   $('btnStop').disabled = true;
-  $('btnRead').disabled = true;
-}
-
-function onDisconnect() {
-  $('status').textContent = 'Disconnesso: ' + pktCount + ' pacchetti registrati';
-  $('btnConnect').disabled = false;
-  $('btnStop').disabled = true;
-  $('btnRead').disabled = true;
 }
 
 function exportCsv() {
-  const off = parseInt($('offset').value, 10) || 0;
-  const type = $('type').value;
-  const div = parseFloat($('div').value) || 1;
-  const rows = ['tempo_s,caratteristica,lunghezza,hex,valore_campo'];
+  const rows = ['tempo_s,comando,valida,mask,hex'];
   for (const r of records) {
-    const v = matchesFilter(r.uuid) ? fieldValue(r.bytes, off, type) : null;
     rows.push([
       r.t.toFixed(3),
-      r.uuid,
-      r.bytes.length,
-      toHex(r.bytes).replace(/ /g, ''),
-      v === null ? '' : (v / div)
+      r.cmd.toString(16).padStart(2, '0'),
+      r.ok ? 1 : 0,
+      r.mask === null ? '' : r.mask,
+      hex(r.bytes).replace(/ /g, '')
     ].join(','));
   }
   const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = 'nc3000_' + new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-') + '.csv';
+  a.download = 'nc3000_risposte_' + new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-') + '.csv';
   document.body.appendChild(a);
   a.click();
   a.remove();
+}
+
+function fieldValue(bytes, off, type) {
+  if (type === 'u8') return off < bytes.length ? bytes[off] : null;
+  if (off + 1 >= bytes.length) return null;
+  return type === 'u16le'
+    ? bytes[off] | (bytes[off + 1] << 8)
+    : (bytes[off] << 8) | bytes[off + 1];
 }
 
 function drawChart() {
@@ -266,11 +301,13 @@ function drawChart() {
   const off = parseInt($('offset').value, 10) || 0;
   const type = $('type').value;
   const div = parseFloat($('div').value) || 1;
+  const maskFilter = $('mask').value === '' ? null : parseInt($('mask').value, 10);
 
   const pts = [];
   for (let i = Math.max(0, records.length - 6000); i < records.length; i++) {
     const r = records[i];
-    if (!matchesFilter(r.uuid)) continue;
+    if (!r.ok || r.cmd !== CMD_NC_DATA) continue;
+    if (maskFilter !== null && r.mask !== maskFilter) continue;
     const v = fieldValue(r.bytes, off, type);
     if (v !== null) pts.push([r.t, v / div]);
   }
@@ -278,7 +315,7 @@ function drawChart() {
   ctx.fillStyle = '#888';
   ctx.font = '12px sans-serif';
   if (pts.length < 2) {
-    ctx.fillText('nessun dato per questo campo', 10, 20);
+    ctx.fillText('nessuna risposta valida per questo campo', 10, 20);
     return;
   }
 
@@ -316,10 +353,10 @@ function drawChart() {
 }
 
 $('btnConnect').onclick = connect;
+$('btnStart').onclick = startPolling;
 $('btnStop').onclick = stop;
-$('btnRead').onclick = readAll;
 $('btnExport').onclick = exportCsv;
-$('filter').oninput = drawChart;
+$('mask').oninput = drawChart;
 $('offset').oninput = drawChart;
 $('type').onchange = drawChart;
 $('div').oninput = drawChart;
