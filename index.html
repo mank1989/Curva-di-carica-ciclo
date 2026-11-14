@@ -27,6 +27,7 @@
   <button id="btnConnect">Connetti</button>
   <button id="btnStop" disabled>Ferma</button>
   <button id="btnExport" disabled>Esporta CSV</button>
+  <button id="btnRead">Leggi valore</button>
 </div>
 <p id="status">Non connesso</p>
 <p class="note">Pacchetti: <span id="count">0</span> · byte: <span id="bytes">0</span></p>
@@ -249,6 +250,22 @@ function drawChart() {
 $('btnConnect').onclick = connect;
 $('btnStop').onclick = stop;
 $('btnExport').onclick = exportCsv;
+$('btnRead').onclick = readOnce;
+
+// Lettura singola di 0000ffe1: solo lettura, nessuna scrittura
+async function readOnce() {
+  if (!char) {
+    $('status').textContent = 'Prima tocca Connetti';
+    return;
+  }
+  try {
+    const dv = await char.readValue();
+    const bytes = new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength).slice();
+    addLog('LETTURA  ' + (bytes.length ? toHex(bytes) : '(vuoto, ' + bytes.length + ' byte)'));
+  } catch (e) {
+    addLog('Errore lettura: ' + e.message);
+  }
+}
 $('offset').oninput = drawChart;
 $('type').onchange = drawChart;
 $('div').oninput = drawChart;
