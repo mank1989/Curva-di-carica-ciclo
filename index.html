@@ -3,52 +3,49 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>NC3000 · richieste dati</title>
+<title>NC3000 · grafici</title>
 <style>
   body { font-family: system-ui, sans-serif; margin: 0; padding: 12px; background: #111; color: #eee; }
   h3 { margin: 8px 0; }
-  h4 { margin: 16px 0 6px; }
+  h4 { margin: 18px 0 6px; }
   button { padding: 10px 14px; margin: 4px 6px 4px 0; font-size: 16px; border: 0; border-radius: 8px; background: #1e88e5; color: #fff; }
   button:disabled { background: #444; }
-  input, select { font-size: 16px; padding: 6px; background: #222; color: #eee; border: 1px solid #444; border-radius: 6px; }
-  input[type=number] { width: 90px; }
-  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 6px 0; }
   .note { font-size: 13px; color: #aaa; }
-  canvas { width: 100%; height: 220px; background: #000; border-radius: 6px; display: block; }
-  #log { font-family: monospace; font-size: 12px; height: 260px; overflow: auto; background: #000; padding: 6px; white-space: pre; border-radius: 6px; }
+  table { width: 100%; border-collapse: collapse; font-size: 15px; }
+  th, td { text-align: left; padding: 6px 4px; border-bottom: 1px solid #333; }
+  th { color: #aaa; font-weight: normal; font-size: 13px; }
+  canvas { width: 100%; height: 240px; background: #000; border-radius: 6px; display: block; margin-bottom: 8px; }
+  #log { font-family: monospace; font-size: 12px; height: 220px; overflow: auto; background: #000; padding: 6px; white-space: pre; border-radius: 6px; }
 </style>
 </head>
 <body>
 
-<h3>NC3000 · richieste dati</h3>
-<p class="note">Invia solo due tipi di messaggio, come fa l'app ufficiale mentre mostra i dati: il battito (0xEE) e la richiesta di dati per canale (0x91). Non ci sono comandi di avvio, arresto o impostazioni: il codice accetta solo questi due, e ogni invio è nel registro.</p>
+<h3>NC3000 · grafici</h3>
+<p class="note">Chiede a ciascun canale i suoi dati (comando 0x91) e un battito di connessione (0xEE). Non invia comandi di avvio, arresto o impostazioni: il codice accetta solo questi due. Connetti azzera i grafici precedenti: esporta prima il CSV.</p>
 
-<div class="row">
+<div>
   <button id="btnConnect">Connetti</button>
   <button id="btnStart" disabled>Avvia richieste</button>
   <button id="btnStop" disabled>Ferma</button>
   <button id="btnExport" disabled>Esporta CSV</button>
 </div>
 <p id="status">Non connesso</p>
-<p class="note">Inviati: <span id="tx">0</span> · risposte valide: <span id="rxok">0</span> · non valide: <span id="rxbad">0</span></p>
+<p class="note">Inviati: <span id="tx">0</span> · risposte valide: <span id="rxok">0</span> · scartate: <span id="rxbad">0</span></p>
 
-<h4>Campo da tracciare</h4>
-<p class="note">Il formato della risposta non è ancora noto. Offset è la posizione nel pacchetto ricevuto, byte 0 = 0F. Il grafico mostra le risposte al comando 0x91; il canale (mask 1, 2, 4, 8) è facoltativo.</p>
-<div class="row">
-  <label>Canale (mask) <input type="number" id="mask" placeholder="vuoto = tutti" min="1" max="8"></label>
-</div>
-<div class="row">
-  <label>Offset <input type="number" id="offset" value="0" min="0"></label>
-  <label>Tipo
-    <select id="type">
-      <option value="u8">uint8</option>
-      <option value="u16le" selected>uint16 LE</option>
-      <option value="u16be">uint16 BE</option>
-    </select>
-  </label>
-  <label>Divisore <input type="number" id="div" value="1000" min="1"></label>
-</div>
-<canvas id="chart"></canvas>
+<h4>Ultimi valori</h4>
+<table id="latest">
+  <tr><th>Canale</th><th>Tensione</th><th>Temperatura</th><th>Contatore</th><th>Ultimo</th></tr>
+  <tr><td>CH1</td><td colspan="4">—</td></tr>
+  <tr><td>CH2</td><td colspan="4">—</td></tr>
+  <tr><td>CH3</td><td colspan="4">—</td></tr>
+  <tr><td>CH4</td><td colspan="4">—</td></tr>
+</table>
+
+<h4>Tensione nel tempo</h4>
+<canvas id="chartV"></canvas>
+
+<h4>Temperatura nel tempo</h4>
+<canvas id="chartT"></canvas>
 
 <h4>Registro</h4>
 <div id="log"></div>
@@ -59,7 +56,11 @@ const CHR = '0000ffe1-0000-1000-8000-00805f9b34fb';
 const CMD_HEARTBEAT = 0xEE;
 const CMD_NC_DATA = 0x91;
 const MASKS = [1, 2, 4, 8];
-const MAX_RECORDS = 200000;
+const CH_OF_MASK = { 1: 1, 2: 2, 4: 3, 8: 4 };
+const CHANNELS = [1, 2, 3, 4];
+const COLORS = { 1: '#4fc3f7', 2: '#ffb74d', 3: '#81c784', 4: '#e57373' };
+const MAX_SAMPLES = 100000;
+const DRAW_POINTS = 3000;
 
 let device = null;
 let char = null;
@@ -69,10 +70,11 @@ let beatTimer = null;
 let maskIdx = 0;
 let writeQueue = Promise.resolve();
 let rxBuf = [];
-let records = [];
+let samples = [];
+let latest = {};
 let t0 = 0;
-let lastDraw = 0;
 let txCount = 0, rxOk = 0, rxBad = 0;
+let lastDraw = 0;
 let logLines = [];
 
 const $ = id => document.getElementById(id);
@@ -88,7 +90,7 @@ function addLog(line) {
   $('log').scrollTop = $('log').scrollHeight;
 }
 
-// Formato: 0F | lunghezza (= totale - 2) | comando | dati... | checksum
+// 0F | lunghezza (= totale - 2) | comando | dati... | checksum
 function buildFrame(cmd, payload) {
   const n = payload.length;
   const f = new Uint8Array(n + 4);
@@ -109,7 +111,24 @@ function checksumOk(f) {
   return (sum & 0xFF) === f[f.length - 1];
 }
 
-// Unico punto di invio: accetta solo battito e richiesta dati per canale
+// Campi della risposta 0x91 (byte numerati da 0, con 0F come primo)
+function be16(f, i) {
+  return (f[i] << 8) | f[i + 1];
+}
+
+function decodeNc(f) {
+  return {
+    ch: CH_OF_MASK[f[3]],
+    mV: be16(f, 6),          // tensione in millivolt
+    tempC: be16(f, 16),      // temperatura in gradi
+    counter: be16(f, 14),    // contatore in secondi
+    raw45: be16(f, 4),
+    raw1011: be16(f, 10),
+    raw1819: be16(f, 18)
+  };
+}
+
+// Unico punto di invio: solo battito e richiesta dati per canale
 function send(cmd, payload) {
   const allowed =
     (cmd === CMD_HEARTBEAT && payload.length === 1 && payload[0] === 0x00) ||
@@ -122,7 +141,6 @@ function send(cmd, payload) {
     else await char.writeValue(f);
     txCount++;
     $('tx').textContent = txCount;
-    addLog('TX  ' + hex(f));
   }).catch(e => addLog('errore invio: ' + e.message));
   return writeQueue;
 }
@@ -130,18 +148,29 @@ function send(cmd, payload) {
 function handleFrame(f) {
   const t = (Date.now() - t0) / 1000;
   const ok = checksumOk(f);
-  const cmd = f[2];
-  const mask = f.length > 8 ? f[8] : null;
   if (ok) rxOk++; else rxBad++;
   $('rxok').textContent = rxOk;
   $('rxbad').textContent = rxBad;
-  records.push({ t, cmd, ok, mask, bytes: f });
-  if (records.length > MAX_RECORDS) records.shift();
-  addLog(t.toFixed(1).padStart(8) + ' s  RX ' + (ok ? 'ok ' : 'ERR') + ' cmd ' +
-         cmd.toString(16).padStart(2, '0') + (mask !== null ? ' mask ' + mask : '') + '  ' + hex(f));
+
+  if (!ok || f[2] !== CMD_NC_DATA || f.length < 20 || !(f[3] in CH_OF_MASK)) {
+    addLog(t.toFixed(1).padStart(8) + ' s  scartata ' + (ok ? '' : '(checksum) ') + hex(f));
+    return;
+  }
+
+  const d = decodeNc(f);
+  const s = { t, ch: d.ch, mV: d.mV, tempC: d.tempC, counter: d.counter,
+              raw45: d.raw45, raw1011: d.raw1011, raw1819: d.raw1819, hex: hex(f) };
+  samples.push(s);
+  if (samples.length > MAX_SAMPLES) samples.shift();
+  latest[d.ch] = s;
+
+  addLog(t.toFixed(1).padStart(8) + ' s  CH' + d.ch + '  ' + (d.mV / 1000).toFixed(3) + ' V  ' +
+         d.tempC + ' °C  cnt ' + d.counter);
+  renderLatest();
+
   if (performance.now() - lastDraw > 500) {
     lastDraw = performance.now();
-    drawChart();
+    drawAll();
   }
 }
 
@@ -151,14 +180,10 @@ function onData(ev) {
   while (rxBuf.length) {
     const s = rxBuf.indexOf(0x0F);
     if (s < 0) {
-      addLog('RX scartati: ' + hex(rxBuf));
       rxBuf = [];
       break;
     }
-    if (s > 0) {
-      addLog('RX scartati: ' + hex(rxBuf.slice(0, s)));
-      rxBuf = rxBuf.slice(s);
-    }
+    if (s > 0) rxBuf = rxBuf.slice(s);
     if (rxBuf.length < 2) break;
     const total = rxBuf[1] + 2;
     if (total < 5) {
@@ -170,6 +195,105 @@ function onData(ev) {
     rxBuf = rxBuf.slice(total);
     handleFrame(frame);
   }
+}
+
+function renderLatest() {
+  const head = '<tr><th>Canale</th><th>Tensione</th><th>Temperatura</th><th>Contatore</th><th>Ultimo</th></tr>';
+  const rows = CHANNELS.map(ch => {
+    const s = latest[ch];
+    if (!s) return '<tr><td>CH' + ch + '</td><td colspan="4">—</td></tr>';
+    return '<tr><td style="color:' + COLORS[ch] + '">CH' + ch + '</td><td>' +
+           (s.mV / 1000).toFixed(3) + ' V</td><td>' + s.tempC + ' °C</td><td>' +
+           s.counter + ' s</td><td>' + s.t.toFixed(1) + ' s</td></tr>';
+  });
+  $('latest').innerHTML = head + rows.join('');
+}
+
+function seriesOf(kind) {
+  const out = { 1: [], 2: [], 3: [], 4: [] };
+  for (const s of samples) {
+    out[s.ch].push([s.t, kind === 'V' ? s.mV / 1000 : s.tempC]);
+  }
+  for (const ch of CHANNELS) {
+    if (out[ch].length > DRAW_POINTS) out[ch] = out[ch].slice(-DRAW_POINTS);
+  }
+  return out;
+}
+
+function drawChart(id, series, fmt) {
+  const cv = $(id);
+  const dpr = window.devicePixelRatio || 1;
+  const w = cv.clientWidth;
+  const h = cv.clientHeight;
+  cv.width = w * dpr;
+  cv.height = h * dpr;
+  const ctx = cv.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, w, h);
+  ctx.font = '12px sans-serif';
+  ctx.fillStyle = '#888';
+
+  let t1 = Infinity, t2 = -Infinity, y1 = Infinity, y2 = -Infinity, count = 0;
+  for (const ch of CHANNELS) {
+    for (const [t, v] of series[ch]) {
+      count++;
+      if (t < t1) t1 = t;
+      if (t > t2) t2 = t;
+      if (v < y1) y1 = v;
+      if (v > y2) y2 = v;
+    }
+  }
+  if (count < 2) {
+    ctx.fillText('in attesa di risposte…', 10, 20);
+    return;
+  }
+  if (y1 === y2) { y1 -= 0.5; y2 += 0.5; }
+  const pad = (y2 - y1) * 0.08;
+  y1 -= pad;
+  y2 += pad;
+  const span = Math.max(t2 - t1, 1);
+  const L = 60, R = w - 10, T = 14, B = h - 22;
+  const X = t => L + (t - t1) / span * (R - L);
+  const Y = v => B - (v - y1) / (y2 - y1) * (B - T);
+
+  ctx.strokeStyle = '#333';
+  ctx.beginPath();
+  ctx.moveTo(L, T);
+  ctx.lineTo(L, B);
+  ctx.lineTo(R, B);
+  ctx.stroke();
+
+  ctx.fillStyle = '#aaa';
+  ctx.fillText(fmt(y2), 4, T + 8);
+  ctx.fillText(fmt(y1), 4, B);
+  ctx.fillText(Math.round(span) + ' s', R - 60, h - 6);
+
+  for (const ch of CHANNELS) {
+    const s = series[ch];
+    if (s.length < 2) continue;
+    ctx.strokeStyle = COLORS[ch];
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    s.forEach(([t, v], i) => {
+      const x = X(t), y = Y(v);
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+  }
+
+  let lx = R - 220;
+  ctx.font = '13px sans-serif';
+  for (const ch of CHANNELS) {
+    ctx.fillStyle = COLORS[ch];
+    ctx.fillText('● CH' + ch, lx, T + 12);
+    lx += 55;
+  }
+}
+
+function drawAll() {
+  drawChart('chartV', seriesOf('V'), v => v.toFixed(3) + ' V');
+  drawChart('chartT', seriesOf('T'), v => v.toFixed(0) + ' °C');
 }
 
 function startPolling() {
@@ -222,13 +346,16 @@ async function connect() {
     if (!useWnR && !char.properties.write) throw new Error('caratteristica non scrivibile');
 
     rxBuf = [];
-    records = [];
+    samples = [];
+    latest = {};
     txCount = 0; rxOk = 0; rxBad = 0;
     logLines = [];
     t0 = Date.now();
     $('tx').textContent = 0;
     $('rxok').textContent = 0;
     $('rxbad').textContent = 0;
+    renderLatest();
+    drawAll();
 
     char.addEventListener('characteristicvaluechanged', onData);
     await char.startNotifications();
@@ -259,109 +386,28 @@ async function stop() {
 }
 
 function exportCsv() {
-  const rows = ['tempo_s,comando,valida,mask,hex'];
-  for (const r of records) {
+  const rows = ['tempo_s,canale,tensione_mV,temperatura_C,contatore_s,byte4_5,byte10_11,byte18_19,hex'];
+  for (const s of samples) {
     rows.push([
-      r.t.toFixed(3),
-      r.cmd.toString(16).padStart(2, '0'),
-      r.ok ? 1 : 0,
-      r.mask === null ? '' : r.mask,
-      hex(r.bytes).replace(/ /g, '')
+      s.t.toFixed(3), 'CH' + s.ch, s.mV, s.tempC, s.counter,
+      s.raw45, s.raw1011, s.raw1819, s.hex.replace(/ /g, '')
     ].join(','));
   }
   const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = 'nc3000_risposte_' + new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-') + '.csv';
+  a.download = 'nc3000_' + new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-') + '.csv';
   document.body.appendChild(a);
   a.click();
   a.remove();
-}
-
-function fieldValue(bytes, off, type) {
-  if (type === 'u8') return off < bytes.length ? bytes[off] : null;
-  if (off + 1 >= bytes.length) return null;
-  return type === 'u16le'
-    ? bytes[off] | (bytes[off + 1] << 8)
-    : (bytes[off] << 8) | bytes[off + 1];
-}
-
-function drawChart() {
-  const cv = $('chart');
-  const dpr = window.devicePixelRatio || 1;
-  const w = cv.clientWidth;
-  const h = cv.clientHeight;
-  cv.width = w * dpr;
-  cv.height = h * dpr;
-  const ctx = cv.getContext('2d');
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.fillStyle = '#000';
-  ctx.fillRect(0, 0, w, h);
-
-  const off = parseInt($('offset').value, 10) || 0;
-  const type = $('type').value;
-  const div = parseFloat($('div').value) || 1;
-  const maskFilter = $('mask').value === '' ? null : parseInt($('mask').value, 10);
-
-  const pts = [];
-  for (let i = Math.max(0, records.length - 6000); i < records.length; i++) {
-    const r = records[i];
-    if (!r.ok || r.cmd !== CMD_NC_DATA) continue;
-    if (maskFilter !== null && r.mask !== maskFilter) continue;
-    const v = fieldValue(r.bytes, off, type);
-    if (v !== null) pts.push([r.t, v / div]);
-  }
-
-  ctx.fillStyle = '#888';
-  ctx.font = '12px sans-serif';
-  if (pts.length < 2) {
-    ctx.fillText('nessuna risposta valida per questo campo', 10, 20);
-    return;
-  }
-
-  const ys = pts.map(p => p[1]);
-  let ymin = Math.min(...ys);
-  let ymax = Math.max(...ys);
-  if (ymax === ymin) { ymax += 1; ymin -= 1; }
-  const t1 = pts[0][0];
-  const t2 = pts[pts.length - 1][0];
-  const span = Math.max(t2 - t1, 1e-6);
-  const X = t => 40 + (t - t1) / span * (w - 50);
-  const Y = v => h - 20 - (v - ymin) / (ymax - ymin) * (h - 40);
-
-  ctx.strokeStyle = '#333';
-  ctx.beginPath();
-  ctx.moveTo(40, 10);
-  ctx.lineTo(40, h - 20);
-  ctx.lineTo(w - 10, h - 20);
-  ctx.stroke();
-
-  ctx.fillStyle = '#aaa';
-  ctx.fillText(ymax.toFixed(3), 2, 14);
-  ctx.fillText(ymin.toFixed(3), 2, h - 22);
-  ctx.fillText(span.toFixed(0) + ' s', w - 60, h - 6);
-
-  ctx.strokeStyle = '#4fc3f7';
-  ctx.lineWidth = 1.5;
-  ctx.beginPath();
-  pts.forEach((p, i) => {
-    const x = X(p[0]);
-    const y = Y(p[1]);
-    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-  });
-  ctx.stroke();
 }
 
 $('btnConnect').onclick = connect;
 $('btnStart').onclick = startPolling;
 $('btnStop').onclick = stop;
 $('btnExport').onclick = exportCsv;
-$('mask').oninput = drawChart;
-$('offset').oninput = drawChart;
-$('type').onchange = drawChart;
-$('div').oninput = drawChart;
 
-drawChart();
+drawAll();
 </script>
 </body>
 </html>
