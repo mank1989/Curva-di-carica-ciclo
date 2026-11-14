@@ -15,25 +15,28 @@
   .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 6px 0; }
   .note { font-size: 13px; color: #aaa; }
   canvas { width: 100%; height: 220px; background: #000; border-radius: 6px; display: block; }
-  #log { font-family: monospace; font-size: 12px; height: 180px; overflow: auto; background: #000; padding: 6px; white-space: pre; border-radius: 6px; }
+  #log { font-family: monospace; font-size: 12px; height: 240px; overflow: auto; background: #000; padding: 6px; white-space: pre; border-radius: 6px; }
 </style>
 </head>
 <body>
 
 <h3>NC3000 · sola lettura</h3>
-<p class="note">Questa pagina non scrive comandi sul caricabatterie. Attiva solo le notifiche della caratteristica 0000ffe1 e registra quello che arriva. Connetti azzera il registro della sessione precedente: esporta prima il CSV.</p>
+<p class="note">Questa pagina non scrive comandi: non chiama mai la scrittura. Dopo la connessione elenca le caratteristiche dei servizi noti, legge quelle leggibili e si iscrive solo a quelle che inviano notifiche o indicazioni. Connetti azzera il registro precedente: esporta prima il CSV.</p>
 
 <div class="row">
   <button id="btnConnect">Connetti</button>
   <button id="btnStop" disabled>Ferma</button>
+  <button id="btnRead" disabled>Leggi tutte</button>
   <button id="btnExport" disabled>Esporta CSV</button>
-  <button id="btnRead">Leggi valore</button>
 </div>
 <p id="status">Non connesso</p>
 <p class="note">Pacchetti: <span id="count">0</span> · byte: <span id="bytes">0</span></p>
 
 <h4>Campo da tracciare</h4>
-<p class="note">Finché non conosciamo il formato dei pacchetti, prova offset e tipo: il grafico mostra quel campo nel tempo. Se il campo è la tensione in mV, con divisore 1000 vedrai valori tra 1,0 e 1,6.</p>
+<p class="note">Il filtro sceglie la caratteristica (parte dell'UUID, es. 8fe0 oppure ffe1). Vuoto = tutte.</p>
+<div class="row">
+  <label>Filtro <input type="text" id="filter" placeholder="vuoto = tutte" size="14"></label>
+</div>
 <div class="row">
   <label>Offset <input type="number" id="offset" value="0" min="0"></label>
   <label>Tipo
@@ -47,16 +50,20 @@
 </div>
 <canvas id="chart"></canvas>
 
-<h4>Flusso grezzo</h4>
+<h4>Registro</h4>
 <div id="log"></div>
 
 <script>
-const SVC = '0000ffe0-0000-1000-8000-00805f9b34fb';
-const CHR = '0000ffe1-0000-1000-8000-00805f9b34fb';
+const SERVICES = [
+  '0000ffe0-0000-1000-8000-00805f9b34fb',
+  '0000fe78-0000-1000-8000-00805f9b34fb',
+  '0000fdb4-0000-1000-8000-00805f9b34fb',
+  '7365a0ae-e596-129d-d84a-88db1ffbcc04'
+];
 const MAX_RECORDS = 200000;
 
 let device = null;
-let char = null;
+let chars = [];
 let records = [];
 let pktCount = 0;
 let totalBytes = 0;
@@ -65,6 +72,7 @@ let lastDraw = 0;
 let logLines = [];
 
 const $ = id => document.getElementById(id);
+const short = uuid => uuid.slice(0, 8);
 
 function toHex(bytes) {
   return Array.from(bytes, b => b.toString(16).padStart(2, '0')).join(' ');
@@ -72,7 +80,7 @@ function toHex(bytes) {
 
 function addLog(line) {
   logLines.push(line);
-  if (logLines.length > 150) logLines.shift();
+  if (logLines.length > 300) logLines.shift();
   $('log').textContent = logLines.join('\n');
   $('log').scrollTop = $('log').scrollHeight;
 }
@@ -85,19 +93,25 @@ function fieldValue(bytes, off, type) {
     : (bytes[off] << 8) | bytes[off + 1];
 }
 
+function matchesFilter(uuid) {
+  const f = $('filter').value.trim().toLowerCase();
+  return !f || uuid.toLowerCase().includes(f);
+}
+
 function onData(ev) {
-  const dv = ev.target.value;
+  const c = ev.target;
+  const dv = c.value;
   const bytes = new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength).slice();
   const t = (Date.now() - t0) / 1000;
 
-  records.push({ t, bytes });
+  records.push({ t, uuid: c.uuid, bytes });
   if (records.length > MAX_RECORDS) records.shift();
   pktCount++;
   totalBytes += bytes.length;
 
   $('count').textContent = pktCount;
   $('bytes').textContent = totalBytes;
-  addLog(t.toFixed(1).padStart(8) + ' s  ' + toHex(bytes));
+  addLog(t.toFixed(1).padStart(8) + ' s  ' + short(c.uuid) + '  ' + toHex(bytes));
 
   if (performance.now() - lastDraw > 500) {
     lastDraw = performance.now();
@@ -105,10 +119,38 @@ function onData(ev) {
   }
 }
 
-function onDisconnect() {
-  $('status').textContent = 'Disconnesso: ' + pktCount + ' pacchetti registrati';
-  $('btnConnect').disabled = false;
-  $('btnStop').disabled = true;
+async function discover(server) {
+  for (const svcUuid of SERVICES) {
+    let svc;
+    try {
+      svc = await server.getPrimaryService(svcUuid);
+    } catch (e) {
+      addLog('servizio assente: ' + short(svcUuid));
+      continue;
+    }
+    addLog('servizio ' + short(svcUuid));
+    const list = await svc.getCharacteristics();
+    for (const c of list) {
+      const p = c.properties;
+      const tags = [
+        p.read && 'R',
+        p.write && 'W',
+        p.writeWithoutResponse && 'WnR',
+        p.notify && 'N',
+        p.indicate && 'I'
+      ].filter(Boolean).join(' ');
+      addLog('  ' + short(c.uuid) + '  ' + tags);
+      chars.push(c);
+      if (p.notify || p.indicate) {
+        c.addEventListener('characteristicvaluechanged', onData);
+        try {
+          await c.startNotifications();
+        } catch (e) {
+          addLog('    notifiche non attive: ' + e.message);
+        }
+      }
+    }
+  }
 }
 
 async function connect() {
@@ -120,57 +162,81 @@ async function connect() {
     $('status').textContent = 'Scelta dispositivo…';
     device = await navigator.bluetooth.requestDevice({
       filters: [{ namePrefix: '#Charger' }],
-      optionalServices: [SVC]
+      optionalServices: SERVICES
     });
     device.addEventListener('gattserverdisconnected', onDisconnect);
 
     $('status').textContent = 'Connessione…';
     const server = await device.gatt.connect();
-    const service = await server.getPrimaryService(SVC);
-    char = await service.getCharacteristic(CHR);
 
     records = [];
+    chars = [];
     pktCount = 0;
     totalBytes = 0;
     logLines = [];
     t0 = Date.now();
 
-    char.addEventListener('characteristicvaluechanged', onData);
-    await char.startNotifications();
+    await discover(server);
 
-    $('status').textContent = 'Registrazione in corso';
+    const listening = chars.filter(c => c.properties.notify || c.properties.indicate).length;
+    $('status').textContent = 'Connesso: in ascolto su ' + listening + ' caratteristiche';
     $('btnConnect').disabled = true;
     $('btnStop').disabled = false;
+    $('btnRead').disabled = false;
     $('btnExport').disabled = false;
   } catch (e) {
     $('status').textContent = 'Errore: ' + e.message;
   }
 }
 
-async function stop() {
-  try {
-    if (char) {
-      char.removeEventListener('characteristicvaluechanged', onData);
-      await char.stopNotifications();
+async function readAll() {
+  for (const c of chars) {
+    if (!c.properties.read) continue;
+    try {
+      const dv = await c.readValue();
+      const bytes = new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength).slice();
+      addLog('LETTURA ' + short(c.uuid) + '  ' + (bytes.length ? toHex(bytes) : '(vuoto)'));
+    } catch (e) {
+      addLog('Errore lettura ' + short(c.uuid) + ': ' + e.message);
     }
-    if (device && device.gatt.connected) device.gatt.disconnect();
-  } catch (e) {
-    // ignora: la connessione potrebbe essere già chiusa
   }
+}
+
+async function stop() {
+  for (const c of chars) {
+    try {
+      if (c.properties.notify || c.properties.indicate) {
+        c.removeEventListener('characteristicvaluechanged', onData);
+        await c.stopNotifications();
+      }
+    } catch (e) {
+      // già chiusa
+    }
+  }
+  if (device && device.gatt.connected) device.gatt.disconnect();
   $('status').textContent = 'Fermata: ' + pktCount + ' pacchetti registrati';
   $('btnConnect').disabled = false;
   $('btnStop').disabled = true;
+  $('btnRead').disabled = true;
+}
+
+function onDisconnect() {
+  $('status').textContent = 'Disconnesso: ' + pktCount + ' pacchetti registrati';
+  $('btnConnect').disabled = false;
+  $('btnStop').disabled = true;
+  $('btnRead').disabled = true;
 }
 
 function exportCsv() {
   const off = parseInt($('offset').value, 10) || 0;
   const type = $('type').value;
   const div = parseFloat($('div').value) || 1;
-  const rows = ['tempo_s,lunghezza,hex,valore_campo'];
+  const rows = ['tempo_s,caratteristica,lunghezza,hex,valore_campo'];
   for (const r of records) {
-    const v = fieldValue(r.bytes, off, type);
+    const v = matchesFilter(r.uuid) ? fieldValue(r.bytes, off, type) : null;
     rows.push([
       r.t.toFixed(3),
+      r.uuid,
       r.bytes.length,
       toHex(r.bytes).replace(/ /g, ''),
       v === null ? '' : (v / div)
@@ -202,9 +268,11 @@ function drawChart() {
   const div = parseFloat($('div').value) || 1;
 
   const pts = [];
-  for (let i = Math.max(0, records.length - 3000); i < records.length; i++) {
-    const v = fieldValue(records[i].bytes, off, type);
-    if (v !== null) pts.push([records[i].t, v / div]);
+  for (let i = Math.max(0, records.length - 6000); i < records.length; i++) {
+    const r = records[i];
+    if (!matchesFilter(r.uuid)) continue;
+    const v = fieldValue(r.bytes, off, type);
+    if (v !== null) pts.push([r.t, v / div]);
   }
 
   ctx.fillStyle = '#888';
@@ -249,23 +317,9 @@ function drawChart() {
 
 $('btnConnect').onclick = connect;
 $('btnStop').onclick = stop;
+$('btnRead').onclick = readAll;
 $('btnExport').onclick = exportCsv;
-$('btnRead').onclick = readOnce;
-
-// Lettura singola di 0000ffe1: solo lettura, nessuna scrittura
-async function readOnce() {
-  if (!char) {
-    $('status').textContent = 'Prima tocca Connetti';
-    return;
-  }
-  try {
-    const dv = await char.readValue();
-    const bytes = new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength).slice();
-    addLog('LETTURA  ' + (bytes.length ? toHex(bytes) : '(vuoto, ' + bytes.length + ' byte)'));
-  } catch (e) {
-    addLog('Errore lettura: ' + e.message);
-  }
-}
+$('filter').oninput = drawChart;
 $('offset').oninput = drawChart;
 $('type').onchange = drawChart;
 $('div').oninput = drawChart;
