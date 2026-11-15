@@ -120,6 +120,7 @@
             border: 1px solid var(--danger); border-radius: 12px; padding: 12px 14px; font-size: 14px; box-shadow: 0 8px 24px rgba(0,0,0,.5); }
   .countdown { font-size: 52px; font-weight: 700; text-align: center; color: #4a5060; margin: 14px 0 4px; font-variant-numeric: tabular-nums; }
   .countdown.live { color: var(--accent); }
+  .tbl tr.best td { color: var(--accent); font-weight: 600; }
   footer { margin-top: 16px; font-size: 11px; color: var(--dim); text-align: center; }
 </style>
 </head>
@@ -292,6 +293,9 @@
 
     <div class="sec">STORICO E PILE</div>
     <div id="raceHistory" style="margin-top:6px"></div>
+    <div class="sec">PILE</div>
+    <div id="cellBoard" style="margin-top:6px"></div>
+
     <div class="sec">ANDAMENTO PILA</div>
     <div class="group">
       <div class="row"><label>Pila</label><div class="val"><select id="hz_name"></select></div></div>
@@ -311,6 +315,10 @@
   <section id="tab-log" class="tab">
     <div class="sec" style="margin-top:10px">REGISTRO</div>
     <div id="log" style="margin-top:6px"></div>
+
+    <div class="sec">BACKUP</div>
+    <div class="btns two" style="margin-top:6px"><button id="btnBackupExport" class="btn ghost">Esporta backup</button><label class="btn ghost" style="display:flex;align-items:center;justify-content:center;cursor:pointer">Importa backup<input type="file" id="bkFile" accept="application/json" style="display:none"></label></div>
+    <p id="bkHint" class="hint">Il backup contiene gare, letture di capacità, nomi pile e impostazioni.</p>
   </section>
 
   <footer>NC3000</footer>
@@ -531,23 +539,6 @@ function onData(ev) {
   }
 }
 
-function renderLatest() {
-  const box = $('latest');
-  box.innerHTML = CHANNELS.map(ch => {
-    const s = latest[ch];
-    if (!s) {
-      return '<div class="card idle"><div class="cardhead"><span class="ch" style="color:' + COLORS[ch] + '">CH' + ch +
-             '</span><span class="badge">in attesa</span></div><div class="v">—</div></div>';
-    }
-    const modo = s.mode.toString(16).padStart(2, '0');
-    return '<div class="card on"><div class="cardhead"><span class="ch" style="color:' + COLORS[ch] + '">CH' + ch +
-           '</span><span class="badge' + (s.mode === 0x02 ? ' chg' : '') + '">modo ' + modo + '</span></div>' +
-           '<div class="v">' + (s.mV / 1000).toFixed(3) + '<small> V</small></div>' +
-           '<div class="metrics"><div><b>' + s.tempC + '</b><small>°C</small></div>' +
-           '<div><b>' + (s.raw1011 * 0.5).toFixed(1) + '</b><small>mAh*</small></div></div>' +
-           '<div class="sub">aggiornato ' + s.t.toFixed(1) + ' s · contatore ' + s.counter + ' s</div></div>';
-  }).join('');
-}
 
 function seriesOf(kind) {
   const out = { 1: [], 2: [], 3: [], 4: [] };
@@ -1368,6 +1359,7 @@ function renderHistoryCells() {
   const name = sel.value;
   drawSeries('hzEnergy', cellSeries(name).map(p => p.E), '#30d158', 'mWh');
   drawSeries('hzCap', (loadCap()[name] || []).map(c => c.mAh), '#30d158', 'mAh');
+  renderCellBoard();
 }
 
 function capSave() {
@@ -1529,6 +1521,231 @@ $('btnAlarmTest').onclick = () => { ensureAudio(); showAlarm('Prova avviso'); };
 });
 loadAlarmCfg();
 renderHistoryCells();
+
+/* ===================== STIMA IN TEMPO REALE ===================== */
+function slopeOf(xs, ys) {
+  const n = xs.length;
+  if (n < 2) return 0;
+  const mx = xs.reduce((a, b) => a + b, 0) / n;
+  const my = ys.reduce((a, b) => a + b, 0) / n;
+  let num = 0, den = 0;
+  for (let i = 0; i < n; i++) {
+    num += (xs[i] - mx) * (ys[i] - my);
+    den += (xs[i] - mx) * (xs[i] - mx);
+  }
+  return den ? num / den : 0;
+}
+
+// finestra di 12 s: corrente dalla pendenza del contatore (0,5 mAh per unità), fase dalla tensione
+function estimateChannel(ch) {
+  const last = latest[ch];
+  if (!last) return null;
+  const tEnd = last.t;
+  const pts = [];
+  for (let i = samples.length - 1; i >= 0 && pts.length < 400; i--) {
+    const s = samples[i];
+    if (s.t < tEnd - 12) break;
+    if (s.ch === ch) pts.push(s);
+  }
+  if (pts.length < 3) return { phase: 'in attesa di dati', mA: null };
+  pts.reverse();
+  const ts = pts.map(p => p.t);
+  const mA = slopeOf(ts, pts.map(p => p.raw1011)) * 1800; // mA = pendenza × 0,5 mAh × 3600
+  const vSlope = slopeOf(ts, pts.map(p => p.mV));          // mV al secondo
+  if (vSlope < -2) return { phase: 'scarica (stima)', mA: null };
+  if (mA > 20) return { phase: 'in carica (stima)', mA: Math.round(mA) };
+  return { phase: 'a riposo', mA: 0 };
+}
+
+function renderLatest() {
+  const box = $('latest');
+  box.innerHTML = CHANNELS.map(ch => {
+    const s = latest[ch];
+    if (!s) {
+      return '<div class="card idle"><div class="cardhead"><span class="ch" style="color:' + COLORS[ch] + '">CH' + ch +
+             '</span><span class="badge">in attesa</span></div><div class="v">—</div></div>';
+    }
+    const modo = s.mode.toString(16).padStart(2, '0');
+    const est = estimateChannel(ch);
+    const fase = est.mA !== null && est.mA > 0 ? est.phase + ' · ' + est.mA + ' mA' : est.phase;
+    return '<div class="card on"><div class="cardhead"><span class="ch" style="color:' + COLORS[ch] + '">CH' + ch +
+           '</span><span class="badge' + (s.mode === 0x02 ? ' chg' : '') + '">modo ' + modo + '</span></div>' +
+           '<div class="v">' + (s.mV / 1000).toFixed(3) + '<small> V</small></div>' +
+           '<div class="metrics"><div><b>' + s.tempC + '</b><small>°C</small></div>' +
+           '<div><b>' + (s.raw1011 * 0.5).toFixed(1) + '</b><small>mAh*</small></div></div>' +
+           '<div class="sub">' + fase + '</div>' +
+           '<div class="sub">aggiornato ' + s.t.toFixed(1) + ' s · contatore ' + s.counter + ' s</div></div>';
+  }).join('');
+}
+
+/* ===================== SCHEDA PILE E PUNTEGGIO ===================== */
+function cellRow(name) {
+  const pts = cellSeries(name);
+  const caps = loadCap()[name] || [];
+  const mean = arr => arr.length ? arr.reduce((s, x) => s + x, 0) / arr.length : null;
+  const E = pts.map(p => p.E / 1000);
+  const mE = mean(E);
+  let cv = null;
+  if (E.length >= 2 && mE > 0) {
+    const sd = Math.sqrt(E.reduce((s, x) => s + (x - mE) * (x - mE), 0) / (E.length - 1));
+    cv = sd / mE * 100;
+  }
+  const R = pts.filter(p => p.R !== null && p.R !== undefined).map(p => p.R);
+  return {
+    name, n: pts.length, Energy: mE, Vmean: mean(pts.map(p => p.V)), Rint: mean(R), cv,
+    cap: caps.length ? caps[caps.length - 1].mAh : null
+  };
+}
+
+// punteggio relativo tra le pile confrontate: 100 = migliore su tutti i criteri
+function scoreCells(rows) {
+  const metrics = [
+    { key: 'Energy', w: 0.35, high: true },
+    { key: 'Rint', w: 0.25, high: false },
+    { key: 'Vmean', w: 0.15, high: true },
+    { key: 'cv', w: 0.25, high: false }
+  ];
+  const active = rows.filter(r => r.n > 0);
+  for (const r of rows) r.score = null;
+  for (const m of metrics) {
+    const vals = active.map(r => r[m.key]).filter(v => v !== null && v !== undefined && isFinite(v));
+    if (vals.length < 2) continue;
+    const lo = Math.min(...vals), hi = Math.max(...vals);
+    for (const r of active) {
+      const v = r[m.key];
+      if (v === null || v === undefined || !isFinite(v)) continue;
+      let norm = hi === lo ? 1 : (v - lo) / (hi - lo);
+      if (!m.high) norm = 1 - norm;
+      r['_' + m.key] = norm;
+    }
+  }
+  for (const r of active) {
+    let num = 0, den = 0;
+    for (const m of metrics) {
+      const nv = r['_' + m.key];
+      if (nv !== undefined) { num += m.w * nv; den += m.w; }
+    }
+    r.score = den ? Math.round(100 * num / den) : null;
+  }
+  return rows;
+}
+
+function renderCellBoard() {
+  const box = $('cellBoard');
+  if (!box) return;
+  const names = allCellNames();
+  if (!names.length) {
+    box.innerHTML = '<p class="hint">Dopo la prima gara compariranno qui le pile con il loro punteggio.</p>';
+    return;
+  }
+  const rows = scoreCells(names.map(cellRow));
+  const ranked = rows.filter(r => r.score !== null).sort((a, b) => b.score - a.score);
+  const rest = rows.filter(r => r.score === null);
+  const f = (x, d, u) => (x === null || x === undefined || !isFinite(x)) ? '—' : x.toFixed(d).replace('.', ',') + u;
+  let html = '<div class="group" style="margin:0"><table class="tbl"><tr><th>Pila</th><th>Gare</th><th>Energia</th><th>R int.</th><th>V media</th><th>Costanza</th><th>Punteggio</th></tr>';
+  for (const r of ranked.concat(rest)) {
+    const cls = r === ranked[0] ? ' class="best"' : '';
+    html += '<tr' + cls + '><td>' + esc(r.name) + '</td><td>' + r.n + '</td><td>' + f(r.Energy * 1000, 1, ' mWh') +
+            '</td><td>' + f(r.Rint, 1, ' mΩ') + '</td><td>' + f(r.Vmean, 3, ' V') + '</td><td>' + f(r.cv, 1, '%') +
+            '</td><td>' + (r.score === null ? '—' : r.score + '/100') + '</td></tr>';
+  }
+  html += '</table></div>';
+  if (ranked.length >= 2) {
+    html += '<p class="hint">Migliori per punteggio: <b>' + esc(ranked[0].name) + '</b> e <b>' + esc(ranked[1].name) +
+            '</b>. Costanza = variazione dell\'energia tra le gare: più è bassa, più la pila è regolare.</p>';
+  } else {
+    html += '<p class="hint">Il punteggio confronta almeno due pile. La costanza richiede almeno due gare per pila.</p>';
+  }
+  box.innerHTML = html;
+}
+
+/* ===================== BACKUP ===================== */
+function readJSON(k, def) {
+  try {
+    const v = JSON.parse(localStorage.getItem(k) || 'null');
+    return v === null ? def : v;
+  } catch (e) { return def; }
+}
+function writeJSON(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* ignora */ } }
+
+function downloadFile(name, text, type) {
+  const blob = new Blob([text], { type });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+function buildBackup() {
+  return {
+    app: 'NC3000', version: 1, created: new Date().toISOString(),
+    races: races,
+    capacity: loadCap(),
+    names: readJSON(NAMES_KEY, {}),
+    alarm: readJSON(ALARM_KEY, {}),
+    ui: readJSON('nc3000_ui_v2', {})
+  };
+}
+
+function exportBackup() {
+  downloadFile('nc3000_backup_' + dateStamp() + '.json', JSON.stringify(buildBackup(), null, 2), 'application/json');
+}
+
+// unisce il backup allo storico attuale: gare e letture non vengono mai duplicate né sovrascritte
+function importBackupText(text) {
+  let b;
+  try { b = JSON.parse(text); } catch (e) { return 'File non valido: non è un JSON'; }
+  if (!b || b.app !== 'NC3000' || b.version !== 1 || !Array.isArray(b.races)) {
+    return 'Il file non è un backup NC3000 compatibile';
+  }
+  const ids = new Set(races.map(r => r.id));
+  let added = 0;
+  for (const r of b.races) {
+    if (r && r.id !== undefined && !ids.has(r.id)) { races.push(r); ids.add(r.id); added++; }
+  }
+  races.sort((x, y) => y.id - x.id);
+  if (races.length > 200) races.length = 200;
+  saveRaces();
+  const cap = loadCap();
+  const src = (b.capacity && typeof b.capacity === 'object') ? b.capacity : {};
+  let capAdded = 0;
+  for (const name of Object.keys(src)) {
+    const list = Array.isArray(src[name]) ? src[name] : [];
+    cap[name] = cap[name] || [];
+    const seen = new Set(cap[name].map(x => x.ts));
+    for (const x of list) {
+      if (x && !seen.has(x.ts)) { cap[name].push(x); seen.add(x.ts); capAdded++; }
+    }
+  }
+  saveCap(cap);
+  if (b.names) writeJSON(NAMES_KEY, b.names);
+  if (b.alarm) writeJSON(ALARM_KEY, b.alarm);
+  if (b.ui) writeJSON('nc3000_ui_v2', b.ui);
+  return 'Backup importato: ' + added + ' gare nuove, ' + capAdded + ' letture di capacità nuove';
+}
+
+function onBackupFile(input) {
+  const f = input.files && input.files[0];
+  if (!f) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    $('bkHint').textContent = importBackupText(String(reader.result));
+    loadNames();
+    loadAlarmCfg();
+    loadParams();
+    applyModeRows();
+    renderRaceAll(races[0] || null);
+    renderHistoryCells();
+    input.value = '';
+  };
+  reader.readAsText(f);
+}
+
+$('btnBackupExport').onclick = exportBackup;
+$('bkFile').addEventListener('change', e => onBackupFile(e.target));
+renderCellBoard();
 
 (function splash() {
   const s = document.getElementById('splash');
