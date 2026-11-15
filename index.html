@@ -1544,7 +1544,7 @@ function estimateChannel(ch) {
   const pts = [];
   for (let i = samples.length - 1; i >= 0 && pts.length < 400; i--) {
     const s = samples[i];
-    if (s.t < tEnd - 12) break;
+    if (s.t < tEnd - 30) break;
     if (s.ch === ch) pts.push(s);
   }
   pts.reverse();
@@ -1554,12 +1554,13 @@ function estimateChannel(ch) {
     if (pts[i].raw1011 < pts[i - 1].raw1011) start = i;
   }
   const win = pts.slice(start);
-  if (win.length < 3) return { phase: 'in attesa di dati', mA: null };
+  if (win.length < 5) return { phase: 'in attesa di dati', mA: null };
   const ts = win.map(p => p.t);
-  const mA = slopeOf(ts, win.map(p => p.raw1011)) * 1800; // mA = pendenza × 0,5 mAh × 3600
-  const vSlope = slopeOf(ts, win.map(p => p.mV));          // mV al secondo
+  const vSlope = slopeOf(ts, win.map(p => p.mV));           // mV al secondo, su 30 s
+  const mA = slopeOf(ts, win.map(p => p.raw1011)) * 1800;   // mA = pendenza × 0,5 mAh × 3600
   if (Math.abs(mA) > 2500) return { phase: 'in attesa di dati', mA: null }; // valore non plausibile
-  if (vSlope < -2) return { phase: 'scarica', mA: null };
+  // la tensione che scende è il criterio principale: il contatore non distingue la scarica dalla carica
+  if (vSlope < -0.1) return { phase: 'scarica', mA: null };
   if (mA > 20) return { phase: 'in carica', mA: Math.round(mA) };
   return { phase: 'a riposo', mA: 0 };
 }
