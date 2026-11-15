@@ -66,8 +66,8 @@
   .kpi small { font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
 
   /* canali: schede compatte */
-  .cards { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
-  @media (min-width: 680px) { .cards { grid-template-columns: repeat(4, 1fr); } }
+  .cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  @media (min-width: 680px) { .cards { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
   .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 10px; position: relative; overflow: hidden; }
   .card::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 2px; background: var(--line2); }
   .card.on::before { background: var(--ok); }
@@ -97,8 +97,8 @@
   details.grp > summary::-webkit-details-marker { display: none; }
   details.grp > summary::after { content: "▾"; color: var(--muted); transition: transform .15s; }
   details.grp[open] > summary::after { transform: rotate(180deg); }
-  .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; padding: 0 10px 10px; }
-  @media (min-width: 680px) { .grid { grid-template-columns: repeat(3, 1fr); } }
+  .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; padding: 0 10px 10px; }
+  @media (min-width: 680px) { .grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
   .field { display: flex; flex-direction: column; gap: 3px; }
   .field > span { font-size: 10.5px; color: var(--muted); }
   .inp { display: flex; align-items: center; background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 0 8px; }
@@ -127,6 +127,10 @@
   #log { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11px; line-height: 1.45; height: 58vh; overflow: auto; background: #05080d;
          border: 1px solid var(--line); border-radius: var(--r); padding: 9px; white-space: pre; color: #9fb0c9; }
 
+  .grid > .field, .fields > .field { min-width: 0; }
+  .inp { min-width: 0; }
+  .inp input, input[type=number] { width: 100%; min-width: 0; }
+  details.grp { overflow: visible; }
   footer { margin-top: 14px; font-size: 10.5px; color: var(--dim); text-align: center; }
 </style>
 </head>
@@ -360,7 +364,7 @@ function validate(p) {
 function buildSettings(p) {
   const b = new Uint8Array(40);
   const be = (i, v) => { v = Math.max(0, Math.min(65535, v | 0)); b[i] = (v >> 8) & 0xFF; b[i + 1] = v & 0xFF; };
-  b[0] = p.position;
+  b[0] = MASK_OF_POS[p.position];   // maschera del canale: 1, 2, 4, 8
   b[1] = p.model;
   be(2, p.chargeE);
   be(4, p.dischargeE);
@@ -388,7 +392,7 @@ function assertAllowed(cmd, payload) {
   if (cmd === CMD_HEARTBEAT) return payload.length === 1 && payload[0] === 0x00;
   if (cmd === CMD_NC_DATA) return payload.length === 1 && [1, 2, 4, 8].includes(payload[0]);
   if (cmd === CMD_STOP) return payload.length === 1 && [1, 2, 4, 8].includes(payload[0]);
-  if (cmd === CMD_START) return payload.length === 40 && payload[0] >= 1 && payload[0] <= 4;
+  if (cmd === CMD_START) return payload.length === 40 && [1, 2, 4, 8].includes(payload[0]);
   return false;
 }
 
