@@ -3,147 +3,127 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#0a0e14">
+<meta name="theme-color" content="#000000">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon-192.png">
-<title>NC3000 Controllo</title>
+<title>NC3000</title>
 <style>
   :root {
-    --bg: #080b10; --panel: #0f1520; --panel2: #151d2b; --line: #1c2638; --line2: #263349;
-    --text: #e8edf6; --muted: #7d8aa1; --dim: #4f5b72;
-    --accent: #4ea1ff; --ink: #03101c; --ok: #3ccf91; --warn: #f5b84b; --danger: #ff5c5c;
+    --bg: #000; --panel: #0d0f14; --row: #14171e; --line: #20242e; --line2: #2c323f;
+    --text: #f2f4f8; --muted: #8b93a3; --dim: #545c6b;
+    --accent: #0a84ff; --orange: #ff9f0a; --ok: #30d158; --danger: #ff453a;
     --c1: #4ea1ff; --c2: #ffb74d; --c3: #7ddc8a; --c4: #f07878;
-    --r: 12px;
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  html, body { margin: 0; background: var(--bg); color: var(--text); font: 13px/1.35 Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; font-variant-numeric: tabular-nums; }
-  body { min-height: 100vh; padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
+  html, body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.35 -apple-system, BlinkMacSystemFont, "SF Pro Text", Inter, system-ui, "Segoe UI", Roboto, sans-serif; font-variant-numeric: tabular-nums; }
+  body { min-height: 100vh; padding-bottom: calc(20px + env(safe-area-inset-bottom)); }
 
-  /* barra superiore compatta */
-  header.top { position: sticky; top: 0; z-index: 20; background: rgba(8,11,16,.92); backdrop-filter: blur(10px);
-               border-bottom: 1px solid var(--line); padding: calc(8px + env(safe-area-inset-top)) 12px 8px; }
+  header.top { position: sticky; top: 0; z-index: 20; background: rgba(0,0,0,.94); backdrop-filter: blur(12px);
+               padding: calc(10px + env(safe-area-inset-top)) 14px 8px; border-bottom: 1px solid var(--line); }
   .hrow { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-  .brand { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 14px; }
-  .logo { width: 24px; height: 24px; border-radius: 7px; display: grid; place-items: center; font-weight: 800; font-size: 12px; color: #fff;
-          background: linear-gradient(135deg, #5aa9ff, #2b6cd4); box-shadow: 0 0 0 1px rgba(255,255,255,.06) inset; }
-  .brand small { color: var(--muted); font-weight: 500; }
-  #status { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); background: var(--panel);
-            border: 1px solid var(--line); padding: 4px 9px; border-radius: 999px; max-width: 60%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  #status::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--dim); flex: none; }
+  .title { font-size: 17px; font-weight: 600; }
+  #status { font-size: 12px; color: var(--muted); max-width: 60%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-  .seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; margin-top: 8px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 3px; }
-  .seg button { font: inherit; font-size: 12px; font-weight: 600; color: var(--muted); background: transparent; border: 0; border-radius: 8px; padding: 7px 4px; min-height: 34px; cursor: pointer; }
-  .seg button.active { background: var(--panel2); color: var(--text); box-shadow: inset 0 0 0 1px var(--line2); }
+  .seg { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px; margin-top: 8px; background: var(--row); border-radius: 9px; padding: 2px; }
+  .seg button { font: inherit; font-size: 13px; font-weight: 500; color: var(--muted); background: transparent; border: 0; border-radius: 7px; padding: 6px 4px; min-height: 32px; cursor: pointer; }
+  .seg button.active { background: #2a2f3b; color: var(--text); }
 
-  main { max-width: 900px; margin: 0 auto; padding: 10px 10px 16px; }
+  main { max-width: 760px; margin: 0 auto; padding: 8px 12px 16px; }
   .tab { display: none; }
   .tab.active { display: block; }
 
-  .sec { display: flex; align-items: center; justify-content: space-between; margin: 12px 2px 6px; }
-  .sec h2 { margin: 0; font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .9px; }
-  .note { font-size: 11.5px; color: var(--muted); margin: 4px 2px; line-height: 1.4; }
-  .note b { color: var(--warn); }
+  .group { background: var(--panel); border-radius: 12px; overflow: hidden; margin: 10px 0; }
+  .group h3 { margin: 0; padding: 10px 14px 6px; font-size: 12px; font-weight: 500; color: var(--muted); }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; border-top: 1px solid var(--line); min-height: 48px; }
+  .group > .row:first-of-type { border-top: 0; }
+  .row > label, .row > span.lbl { font-size: 15px; color: var(--text); flex: 1; min-width: 0; }
+  .row small.hint { display: block; font-size: 11px; color: var(--dim); margin-top: 1px; }
+  .val { display: flex; align-items: center; gap: 6px; flex: none; }
+  .val input { width: 96px; text-align: right; font: inherit; font-size: 15px; color: var(--orange); background: var(--row); border: 1px solid var(--line2); border-radius: 8px; padding: 6px 8px; outline: none; }
+  .val input:focus { border-color: var(--accent); }
+  .val input.bad { border-color: var(--danger); color: var(--danger); }
+  .val .unit { font-size: 13px; color: var(--muted); min-width: 22px; }
+  select { font: inherit; font-size: 15px; color: var(--orange); background: var(--row); border: 1px solid var(--line2); border-radius: 8px; padding: 6px 8px; outline: none; max-width: 160px; }
 
-  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 10px; }
+  .modes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 8px 14px 12px; }
+  .modes button { font: inherit; font-size: 13px; font-weight: 500; border: 1px solid var(--line2); border-radius: 9px; padding: 8px 4px; background: transparent; color: var(--text); min-height: 36px; }
+  .modes button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .modes button:disabled { color: var(--dim); border-color: var(--line); cursor: not-allowed; }
 
-  /* pulsanti */
-  .actions { display: flex; flex-wrap: wrap; gap: 6px; }
-  button { font: inherit; font-size: 13px; font-weight: 600; border: 1px solid transparent; border-radius: 9px; padding: 8px 12px; min-height: 36px;
-           background: var(--panel2); color: var(--text); cursor: pointer; transition: opacity .15s, transform .05s; }
-  button:active { transform: scale(.98); }
-  button.primary { background: var(--accent); color: var(--ink); }
-  button.danger { background: var(--danger); color: #fff; }
-  button.ghost { background: transparent; border-color: var(--line2); }
-  button.wide { flex: 1; }
-  button:disabled { background: var(--panel2); color: var(--dim); border-color: var(--line); cursor: not-allowed; opacity: .7; }
+  .btn { font: inherit; font-size: 16px; font-weight: 600; border: 0; border-radius: 12px; padding: 14px; min-height: 50px; width: 100%; cursor: pointer; color: #fff; background: var(--accent); }
+  .btn.ghost { background: var(--row); color: var(--accent); }
+  .btn.danger { background: var(--danger); }
+  .btn:disabled { background: #22262f; color: var(--dim); cursor: not-allowed; }
+  .btns { display: grid; gap: 8px; margin: 10px 0; }
+  .btns.two { grid-template-columns: 1fr 1fr; }
 
-  /* riepilogo compatto */
-  .kpis { display: flex; gap: 6px; }
-  .kpi { flex: 1; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 6px 8px; display: flex; align-items: baseline; justify-content: space-between; }
-  .kpi b { font-size: 16px; }
-  .kpi small { font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+  .checkrow { display: flex; align-items: center; gap: 10px; padding: 12px 14px; font-size: 14px; color: var(--text); cursor: pointer; }
+  .checkrow input { width: 20px; height: 20px; accent-color: var(--accent); flex: none; }
 
-  /* canali: schede compatte */
-  .cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-  @media (min-width: 680px) { .cards { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
-  .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 10px; position: relative; overflow: hidden; }
-  .card::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 2px; background: var(--line2); }
-  .card.on::before { background: var(--ok); }
+  .hint { font-size: 12px; color: var(--dim); margin: 6px 4px; min-height: 16px; }
+  .err { font-size: 12px; color: #ff8f88; margin: 3px 4px; }
+  .ok { font-size: 12px; color: var(--ok); margin: 3px 4px; }
+
+  /* monitor */
+  .kpis { display: flex; gap: 8px; margin: 8px 0; }
+  .kpi { flex: 1; background: var(--panel); border-radius: 10px; padding: 8px 10px; display: flex; justify-content: space-between; align-items: baseline; }
+  .kpi b { font-size: 16px; font-weight: 600; }
+  .kpi small { font-size: 11px; color: var(--muted); }
+  .cards { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 8px; margin: 8px 0; }
+  @media (min-width: 640px) { .cards { grid-template-columns: repeat(4, minmax(0,1fr)); } }
+  .card { background: var(--panel); border-radius: 12px; padding: 12px; border-top: 3px solid var(--line2); }
+  .card.on { border-top-color: var(--ok); }
   .cardhead { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
-  .ch { font-weight: 800; font-size: 12px; letter-spacing: .4px; }
-  .badge { font-size: 10px; font-weight: 600; padding: 2px 6px; border-radius: 999px; background: var(--panel2); color: var(--muted); border: 1px solid var(--line); }
-  .badge.chg { color: var(--ok); border-color: rgba(60,207,145,.35); background: rgba(60,207,145,.08); }
-  .v { font-size: 26px; font-weight: 700; letter-spacing: -.5px; line-height: 1.1; }
-  .v small { font-size: 12px; color: var(--muted); font-weight: 500; margin-left: 2px; }
+  .ch { font-weight: 700; font-size: 13px; }
+  .badge { font-size: 10px; color: var(--muted); background: var(--row); border-radius: 6px; padding: 2px 6px; }
+  .badge.chg { color: var(--ok); }
+  .v { font-size: 26px; font-weight: 600; letter-spacing: -.4px; line-height: 1.1; }
+  .v small { font-size: 13px; color: var(--muted); font-weight: 500; margin-left: 2px; }
   .metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-top: 6px; }
-  .metrics div { background: var(--panel2); border-radius: 7px; padding: 4px 6px; }
-  .metrics b { font-size: 13px; }
+  .metrics div { background: var(--row); border-radius: 7px; padding: 4px 6px; }
+  .metrics b { font-size: 13px; font-weight: 600; }
   .metrics small { display: block; font-size: 10px; color: var(--muted); }
   .sub { font-size: 10px; color: var(--dim); margin-top: 6px; }
-  .card.idle { opacity: .5; }
-
-  /* grafici compatti */
-  .charts { display: grid; grid-template-columns: 1fr; gap: 8px; }
-  @media (min-width: 680px) { .charts { grid-template-columns: 1fr 1fr; } }
-  .chart { background: #05080d; border: 1px solid var(--line); border-radius: var(--r); padding: 6px; }
-  .chart h3 { margin: 2px 4px 4px; font-size: 10.5px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .6px; }
+  .card.idle { opacity: .45; }
+  .charts { display: grid; grid-template-columns: 1fr; gap: 8px; margin: 8px 0; }
+  @media (min-width: 640px) { .charts { grid-template-columns: 1fr 1fr; } }
+  .chart { background: var(--panel); border-radius: 12px; padding: 8px; }
+  .chart h3 { margin: 2px 4px 6px; font-size: 12px; font-weight: 500; color: var(--muted); }
   canvas { width: 100%; height: 150px; display: block; border-radius: 8px; }
 
-  /* programma: griglia compatta a sezioni ripiegabili */
-  details.grp { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); margin-bottom: 8px; overflow: hidden; }
-  details.grp > summary { list-style: none; cursor: pointer; padding: 9px 10px; font-size: 11px; font-weight: 700; color: var(--text); text-transform: uppercase; letter-spacing: .7px; display: flex; justify-content: space-between; align-items: center; }
-  details.grp > summary::-webkit-details-marker { display: none; }
-  details.grp > summary::after { content: "▾"; color: var(--muted); transition: transform .15s; }
-  details.grp[open] > summary::after { transform: rotate(180deg); }
-  .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; padding: 0 10px 10px; }
-  @media (min-width: 680px) { .grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-  .field { display: flex; flex-direction: column; gap: 3px; }
-  .field > span { font-size: 10.5px; color: var(--muted); }
-  .inp { display: flex; align-items: center; background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 0 8px; }
-  .inp:focus-within { border-color: var(--accent); }
-  .inp input, select { flex: 1; min-width: 0; font: inherit; font-size: 14px; padding: 7px 2px; background: transparent; color: var(--text); border: 0; outline: none; }
-  select { width: 100%; background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 7px 8px; }
-  .inp small { color: var(--dim); font-size: 10px; margin-left: 4px; white-space: nowrap; }
-  input.bad { color: var(--danger); }
-  .field:has(input.bad) .inp { border-color: var(--danger); background: rgba(255,92,92,.07); }
-
-  .errbox { padding: 0 10px; }
-  .err { font-size: 11.5px; color: #ff9d9d; margin: 2px 0; }
-  .ok { font-size: 11.5px; color: var(--ok); margin: 2px 0; }
-
+  .actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+  .actions .btn { width: auto; flex: 1; min-width: 120px; }
+  #log { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11px; line-height: 1.45; height: 62vh; overflow: auto; background: var(--panel);
+         border-radius: 12px; padding: 10px; white-space: pre; color: #aeb6c4; }
   #preview { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11px; line-height: 1.5; white-space: pre-wrap; word-break: break-all;
-             background: #05080d; border: 1px solid var(--line); border-radius: 9px; padding: 9px; color: #9fb0c9; }
-
-  /* avvio e stop: due colonne */
-  .twin { display: grid; grid-template-columns: 1fr; gap: 8px; }
-  @media (min-width: 680px) { .twin { grid-template-columns: 1fr 1fr; } }
-  .start { display: grid; gap: 8px; }
-  .chk { display: flex; align-items: flex-start; gap: 8px; font-size: 11.5px; color: var(--muted); cursor: pointer; }
-  .chk input { width: 16px; height: 16px; margin-top: 1px; accent-color: var(--accent); flex: none; }
-  .hint { font-size: 11px; color: var(--dim); margin: 0; min-height: 14px; }
-
-  #log { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11px; line-height: 1.45; height: 58vh; overflow: auto; background: #05080d;
-         border: 1px solid var(--line); border-radius: var(--r); padding: 9px; white-space: pre; color: #9fb0c9; }
-
-  .grid > .field, .fields > .field { min-width: 0; }
-  .inp { min-width: 0; }
-  .inp input, input[type=number] { width: 100%; min-width: 0; }
-  details.grp { overflow: visible; }
-  footer { margin-top: 14px; font-size: 10.5px; color: var(--dim); text-align: center; }
+             background: var(--panel); border-radius: 12px; padding: 12px; color: #aeb6c4; }
+  .sec { font-size: 12px; font-weight: 500; color: var(--muted); margin: 14px 4px 0; }
+  details.adv { background: var(--panel); border-radius: 12px; margin: 10px 0; }
+  details.adv > summary { list-style: none; cursor: pointer; padding: 12px 14px; font-size: 15px; display: flex; justify-content: space-between; color: var(--text); }
+  details.adv > summary::-webkit-details-marker { display: none; }
+  details.adv > summary::after { content: "›"; color: var(--muted); font-size: 18px; transform: rotate(90deg); transition: transform .15s; }
+  details.adv[open] > summary::after { transform: rotate(-90deg); }
+  .tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .tbl th, .tbl td { text-align: left; padding: 8px 10px; border-top: 1px solid var(--line); }
+  .tbl th { color: var(--muted); font-weight: 500; font-size: 11px; }
+  .tbl td.dim { color: var(--dim); }
+  .btns .btn { width: 100%; }
+  footer { margin-top: 16px; font-size: 11px; color: var(--dim); text-align: center; }
 </style>
 </head>
 <body>
 
 <header class="top">
   <div class="hrow">
-    <div class="brand"><div class="logo">N</div><div>NC3000 <small>controllo</small></div></div>
+    <div class="title">NC3000</div>
     <span id="status">Non connesso</span>
   </div>
   <nav class="seg">
     <button data-tab="tab-monitor" class="active">Monitor</button>
     <button data-tab="tab-program">Programma</button>
+    <button data-tab="tab-race">Gara</button>
     <button data-tab="tab-log">Registro</button>
   </nav>
 </header>
@@ -152,120 +132,145 @@
 
   <!-- MONITOR -->
   <section id="tab-monitor" class="tab active">
-    <div class="actions" style="margin:6px 0 8px">
-      <button id="btnConnect" class="primary wide">Connetti</button>
-      <button id="btnPoll" class="ghost" disabled>Letture</button>
-      <button id="btnDisc" class="ghost" disabled>Disconnetti</button>
-      <button id="btnExport" class="ghost" disabled>CSV</button>
+    <div class="btns two" style="margin-top:10px">
+      <button id="btnConnect" class="btn">Connetti</button>
+      <button id="btnPoll" class="btn ghost" disabled>Avvia letture</button>
+    </div>
+    <div class="btns two" style="margin-top:0">
+      <button id="btnDisc" class="btn ghost" disabled>Disconnetti</button>
+      <button id="btnExport" class="btn ghost" disabled>Esporta CSV</button>
     </div>
 
     <div class="kpis">
-      <div class="kpi"><small>inviati</small><b id="tx">0</b></div>
-      <div class="kpi"><small>valide</small><b id="rxok">0</b></div>
-      <div class="kpi"><small>scartate</small><b id="rxbad">0</b></div>
+      <div class="kpi"><small>Inviati</small><b id="tx">0</b></div>
+      <div class="kpi"><small>Valide</small><b id="rxok">0</b></div>
+      <div class="kpi"><small>Scartate</small><b id="rxbad">0</b></div>
     </div>
 
-    <div class="sec"><h2>Canali</h2></div>
+    <div class="sec">CANALI</div>
     <div id="latest" class="cards"></div>
-    <p class="note">* Contatore: unità ipotizzata di 0,5 mAh caricati (coerente con 0,5 A). Il modo (byte 18) è da confermare.</p>
 
-    <div class="sec"><h2>Andamento</h2></div>
+    <div class="sec">ANDAMENTO</div>
     <div class="charts">
-      <div class="chart"><h3>Tensione (V)</h3><canvas id="chartV"></canvas></div>
-      <div class="chart"><h3>Temperatura (°C)</h3><canvas id="chartT"></canvas></div>
+      <div class="chart"><h3>Tensione</h3><canvas id="chartV"></canvas></div>
+      <div class="chart"><h3>Temperatura</h3><canvas id="chartT"></canvas></div>
     </div>
   </section>
 
   <!-- PROGRAMMA -->
   <section id="tab-program" class="tab">
-    <p class="note" style="margin:4px 2px 8px"><b>Attenzione.</b> Qui si avviano cicli reali. Genera sempre l'anteprima prima di avviare. Prova prima su un canale senza pila, poi con una pila a 100 mA.</p>
-
-    <details class="grp" open>
-      <summary>Canale e capacità</summary>
-      <div class="grid">
-        <label class="field"><span>Canale</span>
-          <select id="p_position"><option value="1">CH1</option><option value="2">CH2</option><option value="3">CH3</option><option value="4">CH4</option></select></label>
-        <label class="field"><span>Capacità</span><div class="inp"><input type="number" id="p_capacity" value="950" inputmode="numeric"><small>mAh</small></div></label>
-        <label class="field"><span>Modello</span><div class="inp"><input type="number" id="p_model" value="0" inputmode="numeric"></div></label>
-      </div>
-    </details>
-
-    <details class="grp" open>
-      <summary>Correnti e tensioni</summary>
-      <div class="grid">
-        <label class="field"><span>Carica</span><div class="inp"><input type="number" id="p_chargeE" value="500" inputmode="numeric"><small>mA</small></div></label>
-        <label class="field"><span>Scarica</span><div class="inp"><input type="number" id="p_dischargeE" value="2500" inputmode="numeric"><small>mA</small></div></label>
-        <label class="field"><span>Fine carica</span><div class="inp"><input type="number" id="p_inStopVoltage" value="1700" inputmode="numeric"><small>mV</small></div></label>
-        <label class="field"><span>Fine scarica</span><div class="inp"><input type="number" id="p_outStopVoltage" value="990" inputmode="numeric"><small>mV</small></div></label>
-        <label class="field"><span>Fine carica (I)</span><div class="inp"><input type="number" id="p_inStopCurrent" value="0" inputmode="numeric"><small>0 off</small></div></label>
-        <label class="field"><span>Fine scarica (I)</span><div class="inp"><input type="number" id="p_outStopCurrent" value="0" inputmode="numeric"><small>0 usa scar.</small></div></label>
-      </div>
-    </details>
-
-    <details class="grp" open>
-      <summary>Pause e cicli</summary>
-      <div class="grid">
-        <label class="field"><span>Pausa dopo carica</span><div class="inp"><input type="number" id="p_chargeRestTime" value="5" inputmode="numeric"><small>min</small></div></label>
-        <label class="field"><span>Pausa dopo scarica</span><div class="inp"><input type="number" id="p_dischargeRestTime" value="10" inputmode="numeric"><small>min</small></div></label>
-        <label class="field"><span>Cicli</span><div class="inp"><input type="number" id="p_cycleCount" value="3" inputmode="numeric"></div></label>
-        <label class="field"><span>Modalità ciclo</span><div class="inp"><input type="number" id="p_cycleMode" value="0" inputmode="numeric"><small>0 predef.</small></div></label>
-        <label class="field"><span>Delta V</span><div class="inp"><input type="number" id="p_detalV" value="6" inputmode="numeric"><small>mV</small></div></label>
-      </div>
-    </details>
-
-    <details class="grp">
-      <summary>Protezioni</summary>
-      <div class="grid">
-        <label class="field"><span>Timer spegnimento</span><div class="inp"><input type="number" id="p_inTimeProtect" value="180" inputmode="numeric"><small>min</small></div></label>
-        <label class="field"><span>Temp. massima</span><div class="inp"><input type="number" id="p_tempProtect" value="60" inputmode="numeric"><small>°C</small></div></label>
-        <label class="field"><span>Capacità massima</span><div class="inp"><input type="number" id="p_inMaxbostCapacity" value="300" inputmode="numeric"><small>mAh</small></div></label>
-      </div>
-    </details>
-
-    <details class="grp">
-      <summary>Avanzate · da confermare</summary>
-      <div class="grid">
-        <label class="field"><span>Trickle</span><div class="inp"><input type="number" id="p_track" value="0" inputmode="numeric"><small>mA</small></div></label>
-        <label class="field"><span>Mantenimento</span><div class="inp"><input type="number" id="p_restartVolt" value="0" inputmode="numeric"><small>mV</small></div></label>
-        <label class="field"><span>Turbo</span><div class="inp"><input type="number" id="p_truboMode" value="0" inputmode="numeric"><small>0 / 1</small></div></label>
-      </div>
-    </details>
-
-    <div class="errbox" id="errors"></div>
-    <div class="actions" style="margin:8px 0 4px"><button id="btnPreview" class="primary wide">Genera anteprima</button></div>
-    <div id="preview" style="margin-top:6px">Premi Genera anteprima per vedere i byte che verranno inviati.</div>
-
-    <div class="sec"><h2>Avvio</h2></div>
-    <div class="twin">
-      <div class="panel start">
-        <label class="chk"><input type="checkbox" id="chkStart"> Confermo l'avvio di questo programma sul canale selezionato</label>
-        <button id="btnStart" class="danger" disabled>Avvia questo canale</button>
-        <p id="startHint" class="hint"></p>
-      </div>
-      <div class="panel start">
-        <label class="chk"><input type="checkbox" id="chkAll"> Confermo l'avvio di questo programma su tutti e quattro i canali</label>
-        <button id="btnStartAll" class="danger" disabled>Avvia tutti i canali</button>
-        <p id="startAllHint" class="hint"></p>
+    <div class="group" style="margin-top:4px">
+      <h3>Canale</h3>
+      <div class="row">
+        <label>Uscita</label>
+        <div class="val"><select id="p_position"><option value="1">Uscita 1</option><option value="2">Uscita 2</option><option value="3">Uscita 3</option><option value="4">Uscita 4</option></select></div>
       </div>
     </div>
 
-    <div class="sec"><h2>Stop</h2></div>
-    <div class="panel start">
-      <div class="actions">
-        <button id="btnStopCh" class="danger wide" disabled>Ferma canale selezionato</button>
-        <button id="btnStopAll" class="danger wide" disabled>Ferma tutti</button>
+    <div class="group">
+      <h3>Modalità</h3>
+      <div class="modes">
+        <button type="button" data-mode="0">Carica</button>
+        <button type="button" data-mode="1">Scarica</button>
+        <button type="button" data-mode="3" class="active">Ciclo</button>
       </div>
-      <p id="stopHint" class="hint"></p>
     </div>
+
+    <div class="group">
+      <h3>Parametri</h3>
+      <div class="row" data-modes="0 3"><label>Capacità</label><div class="val"><input type="number" id="p_capacity" value="950" inputmode="numeric"><span class="unit">mAh</span></div></div>
+      <div class="row" data-modes="0 3"><label>Carica a</label><div class="val"><input type="number" id="p_chargeE" value="0.50" step="0.05" inputmode="decimal"><span class="unit">A</span></div></div>
+      <div class="row" data-modes="1 3"><label>Scarica a</label><div class="val"><input type="number" id="p_dischargeE" value="2.50" step="0.05" inputmode="decimal"><span class="unit">A</span></div></div>
+      <div class="row" data-modes="0 3"><label>Corrente di spegnimento<small class="hint">0 = spento</small></label><div class="val"><input type="number" id="p_inStopCurrent" value="0" step="0.01" inputmode="decimal"><span class="unit">A</span></div></div>
+      <div class="row" data-modes="0 3"><label>Target Voltage</label><div class="val"><input type="number" id="p_inStopVoltage" value="1.70" step="0.01" inputmode="decimal"><span class="unit">V</span></div></div>
+      <div class="row" data-modes="1"><label>Corrente di spegnimento<small class="hint">0 = spento</small></label><div class="val"><input type="number" id="p_outStopCurrent" value="0" step="0.01" inputmode="decimal"><span class="unit">A</span></div></div>
+      <div class="row" data-modes="1 3"><label>Tensione di spegnimento</label><div class="val"><input type="number" id="p_outStopVoltage" value="0.99" step="0.01" inputmode="decimal"><span class="unit">V</span></div></div>
+      <div class="row" data-modes="0 1 3"><label>Timer di spegnimento<small class="hint">0 = spento</small></label><div class="val"><input type="number" id="p_inTimeProtect" value="180" inputmode="numeric"><span class="unit">min</span></div></div>
+      <div class="row" data-modes="0 3"><label>Tempo di pausa di ricarica</label><div class="val"><input type="number" id="p_chargeRestTime" value="5" inputmode="numeric"><span class="unit">min</span></div></div>
+      <div class="row" data-modes="3"><label>Scarico a riposo</label><div class="val"><input type="number" id="p_dischargeRestTime" value="10" inputmode="numeric"><span class="unit">min</span></div></div>
+      <div class="row" data-modes="0 3"><label>Delta Peak −ΔV</label><div class="val"><input type="number" id="p_detalV" value="6" inputmode="numeric"><span class="unit">mV</span></div></div>
+      <div class="row" data-modes="3"><label>Modalità ciclo</label><div class="val"><select id="p_cycleMode"><option value="0" selected>C→D</option><option value="1">D→C</option><option value="2">C→D→C</option><option value="3">D→C→D</option></select></div></div>
+      <div class="row" data-modes="3"><label>Numero di cicli</label><div class="val"><input type="number" id="p_cycleCount" value="3" min="1" max="10" inputmode="numeric"></div></div>
+      <div class="row" data-modes="0 3"><label>Modalità attuale</label><div class="val"><select id="p_truboMode"><option value="0" selected>Fissa</option><option value="1">IR Auto</option></select></div></div>
+    </div>
+
+    <details class="adv">
+      <summary>Protezioni avanzate</summary>
+      <div class="group" style="margin:0;border-radius:0 0 12px 12px">
+        <div class="row"><label>Temperatura massima</label><div class="val"><input type="number" id="p_tempProtect" value="60" inputmode="numeric"><span class="unit">°C</span></div></div>
+        <div class="row"><label>Capacità massima</label><div class="val"><input type="number" id="p_inMaxbostCapacity" value="300" inputmode="numeric"><span class="unit">mAh</span></div></div>
+      </div>
+    </details>
+
+    <input type="hidden" id="p_track" value="0">
+    <input type="hidden" id="p_restartVolt" value="0">
+
+    <div class="errbox" id="errors" style="margin-top:6px"></div>
+    <div class="btns"><button id="btnPreview" class="btn ghost">Anteprima</button></div>
+    <div id="preview" style="margin-top:4px">Premi Anteprima per vedere i dati che verranno inviati.</div>
+
+    <div class="group" style="margin-top:12px">
+      <label class="checkrow"><input type="checkbox" id="chkStart"> Confermo l'avvio su questa uscita</label>
+    </div>
+    <div class="btns"><button id="btnStart" class="btn" disabled>Inizia</button></div>
+    <p id="startHint" class="hint"></p>
+
+    <div class="group">
+      <label class="checkrow"><input type="checkbox" id="chkAll"> Il valore verrà impostato su tutte le uscite</label>
+    </div>
+    <div class="btns"><button id="btnStartAll" class="btn" disabled>Inizia su tutte le uscite</button></div>
+    <p id="startAllHint" class="hint"></p>
+
+    <div class="sec">STOP</div>
+    <div class="btns two" style="margin-top:6px">
+      <button id="btnStopCh" class="btn danger" disabled>Ferma questa uscita</button>
+      <button id="btnStopAll" class="btn danger" disabled>Ferma tutte</button>
+    </div>
+    <p id="stopHint" class="hint"></p>
+  </section>
+
+
+  <!-- GARA -->
+  <section id="tab-race" class="tab">
+    <div class="group" style="margin-top:4px">
+      <h3>Gara</h3>
+      <div class="row"><label>Durata</label><div class="val"><input type="number" id="r_seconds" value="22" min="5" max="120" inputmode="numeric"><span class="unit">s</span></div></div>
+      <div class="row"><label>Scarica</label><div class="val"><span class="unit" id="r_current" style="color:var(--orange)">2,50 A</span></div></div>
+    </div>
+
+    <div class="group">
+      <h3>Uscite e pile</h3>
+      <div class="row"><label><input type="checkbox" id="r_ch1" checked style="accent-color:var(--accent);width:18px;height:18px;margin-right:8px"> Uscita 1</label><div class="val"><input type="text" id="r_name1" placeholder="Nome pila" style="width:140px;text-align:left;color:var(--text)"></div></div>
+      <div class="row"><label><input type="checkbox" id="r_ch2" checked style="accent-color:var(--accent);width:18px;height:18px;margin-right:8px"> Uscita 2</label><div class="val"><input type="text" id="r_name2" placeholder="Nome pila" style="width:140px;text-align:left;color:var(--text)"></div></div>
+      <div class="row"><label><input type="checkbox" id="r_ch3" style="accent-color:var(--accent);width:18px;height:18px;margin-right:8px"> Uscita 3</label><div class="val"><input type="text" id="r_name3" placeholder="Nome pila" style="width:140px;text-align:left;color:var(--text)"></div></div>
+      <div class="row"><label><input type="checkbox" id="r_ch4" style="accent-color:var(--accent);width:18px;height:18px;margin-right:8px"> Uscita 4</label><div class="val"><input type="text" id="r_name4" placeholder="Nome pila" style="width:140px;text-align:left;color:var(--text)"></div></div>
+    </div>
+
+    <div class="group"><label class="checkrow"><input type="checkbox" id="chkRace"> Confermo la scarica sulle uscite selezionate</label></div>
+    <div class="btns two"><button id="btnRaceStart" class="btn" disabled>Avvia gara</button><button id="btnRaceAbort" class="btn danger" disabled>Interrompi</button></div>
+    <p id="raceHint" class="hint"></p>
+    <p id="raceStatus" class="hint"></p>
+
+    <div class="sec">CURVE</div>
+    <div class="chart" style="margin-top:6px"><canvas id="raceChart" style="height:200px"></canvas></div>
+
+    <div class="sec">RISULTATI</div>
+    <div id="raceTable" style="margin-top:6px"></div>
+
+    <div class="sec">SOMIGLIANZA</div>
+    <div id="raceSim" style="margin-top:6px"></div>
+
+    <div class="sec">STORICO E PILE</div>
+    <div id="raceHistory" style="margin-top:6px"></div>
   </section>
 
   <!-- REGISTRO -->
   <section id="tab-log" class="tab">
-    <div class="sec"><h2>Registro</h2></div>
-    <div id="log"></div>
+    <div class="sec" style="margin-top:10px">REGISTRO</div>
+    <div id="log" style="margin-top:6px"></div>
   </section>
 
-  <footer>NC3000 controllo</footer>
+  <footer>NC3000</footer>
 </main>
 
 <script>
@@ -285,8 +290,8 @@ const LIMITS = {
   position: [1, 4], model: [0, 255], chargeE: [100, 1000], dischargeE: [100, 2500],
   capacity: [100, 5000], inStopVoltage: [1400, 1750], outStopVoltage: [900, 1200],
   inStopCurrent: [0, 300], outStopCurrent: [0, 2500], chargeRestTime: [0, 60],
-  dischargeRestTime: [0, 60], cycleCount: [1, 10], cycleMode: [0, 2], detalV: [3, 15],
-  track: [0, 500], restartVolt: [0, 1500], tempProtect: [40, 65], inTimeProtect: [30, 360],
+  dischargeRestTime: [0, 60], cycleCount: [1, 10], cycleMode: [0, 3], detalV: [3, 15],
+  track: [0, 500], restartVolt: [0, 1500], tempProtect: [40, 65], inTimeProtect: [0, 360],
   inMaxbostCapacity: [100, 5000], truboMode: [0, 1]
 };
 
@@ -298,6 +303,22 @@ let t0 = 0, txCount = 0, rxOk = 0, rxBad = 0, lastDraw = 0;
 let logLines = [];
 let previewedKey = null;
 let previewedAllKey = null;
+let currentMode = 3;   // 0 Carica, 1 Scarica, 3 Ciclo (valori dell'app)
+const MODE_NAME = { 0: 'Carica', 1: 'Scarica', 3: 'Ciclo' };
+function setMode(m) {
+  currentMode = m;
+  previewedKey = null; previewedAllKey = null;
+  applyModeRows();
+  updateStartButton();
+}
+function applyModeRows() {
+  document.querySelectorAll('[data-modes]').forEach(row => {
+    row.style.display = row.dataset.modes.split(' ').includes(String(currentMode)) ? '' : 'none';
+  });
+  document.querySelectorAll('.modes button[data-mode]').forEach(b => {
+    b.classList.toggle('active', Number(b.dataset.mode) === currentMode);
+  });
+}
 
 const $ = id => document.getElementById(id);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -329,13 +350,18 @@ function checksumOk(f) {
 }
 
 // Parametri letti dalla pagina
+// Unità della UI come l'app ufficiale (A, V); il comando usa mA e mV
+const UNIT_SCALE = { chargeE: 1000, dischargeE: 1000, inStopVoltage: 1000, outStopVoltage: 1000, inStopCurrent: 1000, outStopCurrent: 1000 };
 function readParams() {
   const p = {};
   for (const k of Object.keys(LIMITS).concat(['capacity', 'chargeE', 'dischargeE'])) {
     const el = $('p_' + k);
-    if (el) p[k] = Number(el.value);
+    if (!el) continue;
+    const raw = Number(el.value);
+    p[k] = UNIT_SCALE[k] ? Math.round(raw * UNIT_SCALE[k]) : raw;
   }
   p.position = Number($('p_position').value);
+  p.model = currentMode;
   return p;
 }
 
@@ -348,8 +374,8 @@ function validate(p) {
     const ok = Number.isFinite(v) && v >= lo && v <= hi && Number.isInteger(v);
     if (!ok) { errs.push(k + ': valore fuori da ' + lo + '–' + hi); bad.push(k); }
   }
-  if (p.outStopVoltage >= p.inStopVoltage) { errs.push('fine scarica deve essere sotto la fine carica'); bad.push('outStopVoltage'); }
-  if (p.inTimeProtect < 1.3 * (p.capacity / p.chargeE * 60)) {
+  if (p.model !== 1 && p.outStopVoltage >= p.inStopVoltage) { errs.push('fine scarica deve essere sotto la fine carica'); bad.push('outStopVoltage'); }
+  if (p.model !== 1 && p.inTimeProtect > 0 && p.inTimeProtect < 1.3 * (p.capacity / p.chargeE * 60)) {
     errs.push('timer troppo corto: serve almeno ' + Math.ceil(1.3 * p.capacity / p.chargeE * 60) + ' min per la carica');
     bad.push('inTimeProtect');
   }
@@ -396,9 +422,11 @@ function assertAllowed(cmd, payload) {
   return false;
 }
 
-function enqueue(cmd, payload, label) {
+let pendingWrites = 0;
+function enqueue(cmd, payload, label, cb) {
   if (!assertAllowed(cmd, payload)) throw new Error('comando non consentito');
   const f = buildFrame(cmd, payload);
+  pendingWrites++;
   writeQueue = writeQueue.then(async () => {
     if (!char || !device || !device.gatt.connected) throw new Error('non connesso');
     if (useWnR) await char.writeValueWithoutResponse(f);
@@ -406,8 +434,9 @@ function enqueue(cmd, payload, label) {
     txCount++;
     $('tx').textContent = txCount;
     addLog('TX ' + label + '  ' + hex(f));
+    if (typeof cb === 'function') cb(Date.now());
     await sleep(WRITE_GAP_MS);
-  }).catch(e => addLog('ERRORE invio: ' + e.message));
+  }).catch(e => addLog('ERRORE invio: ' + e.message)).finally(() => { pendingWrites--; });
   return writeQueue;
 }
 
@@ -624,7 +653,7 @@ function renderPreview() {
   const frame = buildFrame(CMD_START, Array.from(blob));
   const expected = (p.capacity / p.chargeE * 60).toFixed(0);
   const lines = [
-    'Canale CH' + p.position + ' · carica ' + p.chargeE + ' mA · scarica ' + p.dischargeE + ' mA · cicli ' + p.cycleCount,
+    'Modalità ' + MODE_NAME[p.model] + ' · uscita ' + p.position + ' · carica ' + p.chargeE + ' mA · scarica ' + p.dischargeE + ' mA',
     'Carica prevista circa ' + expected + ' min (solo stima), timer ' + p.inTimeProtect + ' min',
     '',
     'Blocco impostazioni (40 byte):',
@@ -677,6 +706,7 @@ function updateStartButton() {
   $('btnStartAll').disabled = ar.length > 0;
   $('startAllHint').textContent = ar.length ? 'Per avviare tutti: ' + ar.join(' · ') : 'Pronto: avvia CH1–CH4 con questi valori';
   $('startHint').textContent = sr.length ? 'Per avviare: ' + sr.join(' · ') : 'Pronto all\'avvio';
+  updateRaceButton();
   $('stopHint').textContent = tr.length ? 'Per fermare: ' + tr.join(' · ') : 'Stop immediato sul canale selezionato o su tutti';
 }
 
@@ -725,16 +755,20 @@ function exportCsv() {
 
 // Ricorda i valori tra una sessione e l'altra (solo su questo browser)
 function saveParams() {
-  try { localStorage.setItem('nc3000_params', JSON.stringify(readParams())); } catch (e) { /* ignora */ }
+  try {
+    const o = {};
+    document.querySelectorAll('[id^="p_"]').forEach(el => { o[el.id] = el.value; });
+    localStorage.setItem('nc3000_ui_v2', JSON.stringify(o));
+  } catch (e) { /* ignora */ }
 }
 function loadParams() {
   try {
-    const raw = localStorage.getItem('nc3000_params');
+    const raw = localStorage.getItem('nc3000_ui_v2');
     if (!raw) return;
-    const p = JSON.parse(raw);
-    for (const k of Object.keys(p)) {
-      const el = $(k === 'position' ? 'p_position' : 'p_' + k);
-      if (el) el.value = p[k];
+    const o = JSON.parse(raw);
+    for (const id of Object.keys(o)) {
+      const el = document.getElementById(id);
+      if (el) el.value = o[id];
     }
   } catch (e) { /* ignora */ }
 }
@@ -750,20 +784,325 @@ $('chkAll').onchange = updateStartButton;
 $('btnStopCh').onclick = () => stopChannel(Number($('p_position').value));
 $('btnStopAll').onclick = stopAll;
 $('chkStart').onchange = updateStartButton;
-for (const id of ['p_position','p_capacity','p_chargeE','p_dischargeE','p_inStopVoltage','p_outStopVoltage','p_inStopCurrent','p_outStopCurrent','p_chargeRestTime','p_dischargeRestTime','p_cycleCount','p_cycleMode','p_detalV','p_inTimeProtect','p_tempProtect','p_inMaxbostCapacity','p_track','p_restartVolt','p_truboMode','p_model']) {
-  $(id).addEventListener('input', () => { previewedKey = null; if (id !== 'p_position') previewedAllKey = null; updateStartButton(); });
-}
+document.querySelectorAll('[id^="p_"]').forEach(el => {
+  const reset = () => { previewedKey = null; if (el.id !== 'p_position') previewedAllKey = null; updateStartButton(); };
+  el.addEventListener('input', reset);
+  el.addEventListener('change', reset);
+});
 
 
 function showTab(id) {
   document.querySelectorAll('.tab').forEach(s => s.classList.toggle('active', s.id === id));
   document.querySelectorAll('.seg button').forEach(b => b.classList.toggle('active', b.dataset.tab === id));
   if (id === 'tab-monitor') drawAll();
+  if (id === 'tab-race') renderRaceAll(races[0] || null);
   window.scrollTo(0, 0);
 }
 document.querySelectorAll('.seg button').forEach(b => b.addEventListener('click', () => showTab(b.dataset.tab)));
 
+/* ===================== GARA ===================== */
+const RACE_KEY = 'nc3000_races_v1';
+const NAMES_KEY = 'nc3000_names_v1';
+let races = [];
+let race = null;
+let racePollTimer = null;
+let raceStopTimers = [];
+let racePollIdx = 0;
+let pollWasOn = false;
+
+function loadRaces() { try { races = JSON.parse(localStorage.getItem(RACE_KEY) || '[]'); } catch (e) { races = []; } }
+function saveRaces() { try { localStorage.setItem(RACE_KEY, JSON.stringify(races)); } catch (e) { /* ignora */ } }
+function loadNames() {
+  try {
+    const o = JSON.parse(localStorage.getItem(NAMES_KEY) || '{}');
+    for (const ch of CHANNELS) if (o[ch] !== undefined) $('r_name' + ch).value = o[ch];
+  } catch (e) { /* ignora */ }
+}
+function saveNames() {
+  const o = {};
+  for (const ch of CHANNELS) o[ch] = $('r_name' + ch).value.trim();
+  try { localStorage.setItem(NAMES_KEY, JSON.stringify(o)); } catch (e) { /* ignora */ }
+}
+
+function raceReasons() {
+  const why = [];
+  if (!char) why.push('Connetti il caricabatterie');
+  if (race) why.push('gara già in corso');
+  if (!CHANNELS.some(ch => $('r_ch' + ch).checked)) why.push('seleziona almeno un\'uscita');
+  const n = Math.round(Number($('r_seconds').value));
+  if (!(n >= 5 && n <= 120)) why.push('durata tra 5 e 120 s');
+  if (!$('chkRace').checked) why.push('spunta la conferma');
+  return why;
+}
+
+function updateRaceButton() {
+  const rr = raceReasons();
+  $('btnRaceStart').disabled = rr.length > 0;
+  $('btnRaceAbort').disabled = !race;
+  $('raceHint').textContent = rr.length ? 'Per avviare: ' + rr.join(' · ') : 'Pronto';
+  $('r_current').textContent = (Number($('p_dischargeE').value) || 0).toFixed(2).replace('.', ',') + ' A';
+}
+
+function raceStart() {
+  if (raceReasons().length) return;
+  const N = Math.round(Number($('r_seconds').value));
+  const chans = CHANNELS.filter(ch => $('r_ch' + ch).checked);
+  const p = readParams();
+  // gara = modalità Scarica; lo stop lo invia la pagina allo scadere
+  const rp = Object.assign({}, p, { model: 1, cycleCount: 1, cycleMode: 0 });
+  const errs = validate(rp).filter(e => !e.startsWith('timer troppo corto') && !e.startsWith('fine scarica'));
+  if (errs.length) { $('raceHint').textContent = 'Correggi i parametri nella scheda Programma'; return; }
+  saveNames();
+  race = { N, chans, I: rp.dischargeE / 1000, tStart: {}, names: {}, stopped: 0, running: true, pollIdx: 0 };
+  for (const ch of CHANNELS) race.names[ch] = $('r_name' + ch).value.trim() || ('Uscita ' + ch);
+  pollWasOn = !!pollTimer;
+  stopPolling();
+  for (const ch of chans) {
+    enqueue(CMD_START, Array.from(buildSettings(Object.assign({}, rp, { position: ch }))), 'gara CH' + ch, (ms) => {
+      race.tStart[ch] = (ms - t0) / 1000;
+      raceStopTimers.push(setTimeout(() => {
+        enqueue(CMD_STOP, [MASK_OF_POS[ch]], 'stop gara CH' + ch, () => { race.stopped++; raceCheckEnd(); });
+      }, N * 1000));
+    });
+  }
+  racePollTimer = setInterval(() => {
+    if (!race || pendingWrites >= 2) return;
+    const masks = race.chans.map(c => MASK_OF_POS[c]);
+    enqueue(CMD_NC_DATA, [masks[race.pollIdx % masks.length]], '0x91 gara');
+    race.pollIdx++;
+  }, 120);
+  $('chkRace').checked = false;
+  $('raceStatus').textContent = 'Gara in corso su ' + chans.length + ' uscit' + (chans.length > 1 ? 'e' : 'a') + ' · ' + N + ' s';
+  updateRaceButton();
+}
+
+function raceCheckEnd() {
+  if (race && race.stopped >= race.chans.length) setTimeout(raceFinish, 1500);
+}
+
+function raceAbort() {
+  if (!race) return;
+  for (const id of raceStopTimers) clearTimeout(id);
+  raceStopTimers = [];
+  for (const ch of race.chans) enqueue(CMD_STOP, [MASK_OF_POS[ch]], 'stop gara CH' + ch, () => { race.stopped++; raceCheckEnd(); });
+}
+
+function raceFinish() {
+  if (!race) return;
+  if (racePollTimer) clearInterval(racePollTimer);
+  racePollTimer = null;
+  for (const id of raceStopTimers) clearTimeout(id);
+  raceStopTimers = [];
+  const run = computeRun(race);
+  races.unshift(run);
+  if (races.length > 200) races.length = 200;
+  saveRaces();
+  race = null;
+  $('raceStatus').textContent = 'Gara completata · ' + run.date;
+  renderRaceAll(run);
+  updateRaceButton();
+  if (pollWasOn) startPolling();
+}
+
+// --- calcoli ---
+function avg(a) { return a.length ? a.reduce((s, x) => s + x, 0) / a.length : null; }
+
+function computeRun(r) {
+  const run = { id: Date.now(), date: new Date().toLocaleString('it-IT'), N: r.N, I: r.I, cells: {} };
+  for (const ch of r.chans) {
+    const ts = r.tStart[ch];
+    const name = r.names[ch];
+    if (ts === undefined) { run.cells[ch] = { name, n: 0 }; continue; }
+    const rest = samples.filter(s => s.ch === ch && s.t < ts && s.t > ts - 120);
+    const restV = rest.length ? rest[rest.length - 1].mV / 1000 : null;
+    const seg = samples.filter(s => s.ch === ch && s.t >= ts && s.t <= ts + r.N + 0.5)
+                       .map(s => ({ x: s.t - ts, y: s.mV / 1000, tc: s.tempC }));
+    if (seg.length < 2) { run.cells[ch] = { name, n: seg.length }; continue; }
+    let energy = 0;
+    for (let i = 1; i < seg.length; i++) energy += (seg[i].y + seg[i - 1].y) / 2 * (seg[i].x - seg[i - 1].x);
+    energy = energy * r.I / 3600;
+    const v2 = avg(seg.filter(s => s.x >= 1.5 && s.x <= 2.5).map(s => s.y)) ?? seg[0].y;
+    const vend = avg(seg.filter(s => s.x >= r.N - 1).map(s => s.y)) ?? seg[seg.length - 1].y;
+    const rint = restV !== null ? (restV - v2) / r.I * 1000 : null;
+    const step = Math.max(1, Math.floor(seg.length / 220));
+    run.cells[ch] = {
+      name, n: seg.length,
+      Vmean: avg(seg.map(s => s.y)),
+      Vend: vend,
+      Energy: energy,
+      Rint: rint,
+      Tstart: seg[0].tc,
+      Tend: seg[seg.length - 1].tc,
+      dT: seg[seg.length - 1].tc - seg[0].tc,
+      curve: seg.filter((_, i) => i % step === 0).map(s => [s.x, s.y])
+    };
+  }
+  return run;
+}
+
+function simPct(a, b) {
+  const m = (a + b) / 2;
+  if (!m) return 0;
+  return Math.max(0, 100 * (1 - Math.abs(a - b) / m));
+}
+
+// somiglianza: media delle somiglianze su tensione media, energia e resistenza interna
+function similarity(c1, c2) {
+  const parts = [simPct(c1.Vmean, c2.Vmean), simPct(c1.Energy, c2.Energy)];
+  if (c1.Rint !== null && c2.Rint !== null && c1.Rint !== undefined && c2.Rint !== undefined) parts.push(simPct(c1.Rint, c2.Rint));
+  return avg(parts);
+}
+
+function pairDetail(c1, c2) {
+  return {
+    sim: similarity(c1, c2),
+    dV: Math.abs(c1.Vmean - c2.Vmean) * 1000,
+    dE: Math.abs(c1.Energy - c2.Energy) / ((c1.Energy + c2.Energy) / 2) * 100,
+    dR: (c1.Rint !== null && c2.Rint !== null) ? Math.abs(c1.Rint - c2.Rint) : null
+  };
+}
+
+function fmt(x, d) { return x === null || x === undefined || !isFinite(x) ? '—' : x.toFixed(d).replace('.', ','); }
+
+// --- disegno ---
+function drawRaceChart(run) {
+  const cv = $('raceChart');
+  const dpr = window.devicePixelRatio || 1;
+  const w = cv.clientWidth, h = cv.clientHeight;
+  cv.width = w * dpr; cv.height = h * dpr;
+  const ctx = cv.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.fillStyle = '#0d0f14'; ctx.fillRect(0, 0, w, h);
+  ctx.font = '11px sans-serif'; ctx.fillStyle = '#8b93a3';
+  const cells = run ? Object.entries(run.cells).filter(([, c]) => c.curve) : [];
+  if (!cells.length) { ctx.fillText('nessuna gara ancora', 10, 20); return; }
+  let y1 = Infinity, y2 = -Infinity;
+  for (const [, c] of cells) for (const [, y] of c.curve) { if (y < y1) y1 = y; if (y > y2) y2 = y; }
+  const pad = (y2 - y1) * 0.1 || 0.05; y1 -= pad; y2 += pad;
+  const N = run.N;
+  const L = 44, R = w - 10, T = 12, B = h - 20;
+  const X = x => L + x / N * (R - L);
+  const Y = y => B - (y - y1) / (y2 - y1) * (B - T);
+  ctx.strokeStyle = '#20242e'; ctx.beginPath(); ctx.moveTo(L, T); ctx.lineTo(L, B); ctx.lineTo(R, B); ctx.stroke();
+  ctx.fillStyle = '#8b93a3';
+  ctx.fillText(y2.toFixed(2) + ' V', 2, T + 8); ctx.fillText(y1.toFixed(2) + ' V', 2, B);
+  ctx.fillText('0 s', L, h - 6); ctx.fillText(N + ' s', R - 30, h - 6);
+  let lx = L + 6;
+  for (const [ch, c] of cells) {
+    ctx.strokeStyle = COLORS[ch]; ctx.lineWidth = 1.6; ctx.beginPath();
+    c.curve.forEach(([x, y], i) => { if (i === 0) ctx.moveTo(X(x), Y(y)); else ctx.lineTo(X(x), Y(y)); });
+    ctx.stroke();
+    ctx.fillStyle = COLORS[ch]; ctx.fillText('● ' + c.name, lx, T + 10); lx += Math.min(150, 12 + c.name.length * 7);
+  }
+}
+
+function renderRaceTable(run) {
+  if (!run) { $('raceTable').innerHTML = '<p class="hint">Nessuna gara ancora.</p>'; return; }
+  let html = '<div class="group" style="margin:0"><table class="tbl"><tr><th>Pila</th><th>Energia</th><th>V media</th><th>V fine</th><th>R int.</th><th>ΔT</th></tr>';
+  for (const ch of CHANNELS) {
+    const c = run.cells[ch];
+    if (!c) continue;
+    if (!c.curve) { html += '<tr><td style="color:' + COLORS[ch] + '">' + c.name + '</td><td colspan="5" class="dim">dati insufficienti</td></tr>'; continue; }
+    html += '<tr><td style="color:' + COLORS[ch] + '">' + c.name + '</td><td>' + fmt(c.Energy * 1000, 1) + ' mWh</td><td>' +
+            fmt(c.Vmean, 3) + ' V</td><td>' + fmt(c.Vend, 3) + ' V</td><td>' + fmt(c.Rint, 1) + ' mΩ</td><td>' + fmt(c.dT, 1) + ' °C</td></tr>';
+  }
+  html += '</table></div>';
+  $('raceTable').innerHTML = html;
+}
+
+function renderRaceSim(run) {
+  if (!run) { $('raceSim').innerHTML = ''; return; }
+  const ok = CHANNELS.filter(ch => run.cells[ch] && run.cells[ch].curve);
+  if (ok.length < 2) { $('raceSim').innerHTML = '<p class="hint">Servono almeno due pile per il confronto.</p>'; return; }
+  const pairs = [];
+  for (let i = 0; i < ok.length; i++) for (let j = i + 1; j < ok.length; j++) {
+    const a = run.cells[ok[i]], b = run.cells[ok[j]];
+    pairs.push({ a: a.name, b: b.name, ...pairDetail(a, b) });
+  }
+  pairs.sort((x, y) => y.sim - x.sim);
+  let html = '<div class="group" style="margin:0"><table class="tbl"><tr><th>Coppia</th><th>Somiglianza</th><th>ΔV</th><th>ΔEnergia</th><th>ΔR</th></tr>';
+  for (const p of pairs) {
+    html += '<tr><td>' + p.a + ' · ' + p.b + '</td><td><b>' + fmt(p.sim, 1) + '%</b></td><td>' + fmt(p.dV, 1) + ' mV</td><td>' +
+            fmt(p.dE, 1) + '%</td><td>' + (p.dR === null ? '—' : fmt(p.dR, 1) + ' mΩ') + '</td></tr>';
+  }
+  html += '</table></div>';
+  html += '<p class="hint">Coppia consigliata: <b>' + pairs[0].a + ' + ' + pairs[0].b + '</b> (somiglianza ' + fmt(pairs[0].sim, 1) + '%)</p>';
+  $('raceSim').innerHTML = html;
+}
+
+function renderRaceHistory() {
+  if (!races.length) { $('raceHistory').innerHTML = '<p class="hint">Lo storico delle gare è vuoto.</p>'; return; }
+  // riepilogo per nome pila (media su tutte le gare)
+  const byName = {};
+  for (const run of races) for (const ch of CHANNELS) {
+    const c = run.cells[ch];
+    if (!c || !c.curve) continue;
+    (byName[c.name] = byName[c.name] || []).push(c);
+  }
+  let html = '<div class="group" style="margin:0"><table class="tbl"><tr><th>Pila</th><th>Gare</th><th>Energia media</th><th>R int. media</th><th>V media</th></tr>';
+  const summary = [];
+  for (const [name, arr] of Object.entries(byName)) {
+    const s = { name, n: arr.length, Energy: avg(arr.map(c => c.Energy)), Vmean: avg(arr.map(c => c.Vmean)),
+                Rint: avg(arr.filter(c => c.Rint !== null).map(c => c.Rint)) };
+    if (!arr.some(c => c.Rint !== null)) s.Rint = null;
+    summary.push(s);
+  }
+  summary.sort((a, b) => b.Energy - a.Energy);
+  for (const s of summary) html += '<tr><td>' + s.name + '</td><td>' + s.n + '</td><td>' + fmt(s.Energy * 1000, 1) + ' mWh</td><td>' + fmt(s.Rint, 1) + ' mΩ</td><td>' + fmt(s.Vmean, 3) + ' V</td></tr>';
+  html += '</table></div>';
+  if (summary.length >= 2) {
+    let best = null;
+    for (let i = 0; i < summary.length; i++) for (let j = i + 1; j < summary.length; j++) {
+      const sim = similarity(summary[i], summary[j]);
+      if (!best || sim > best.sim) best = { a: summary[i].name, b: summary[j].name, sim };
+    }
+    html += '<p class="hint">Coppia più simile in base a tutte le gare: <b>' + best.a + ' + ' + best.b + '</b> (' + fmt(best.sim, 1) + '%)</p>';
+  }
+  html += '<div class="btns two" style="margin-top:8px"><button class="btn ghost" onclick="raceDeleteLast()">Elimina ultima gara</button><button class="btn ghost" onclick="raceExportCsv()">Esporta CSV</button></div><button class="btn danger" style="margin-top:8px" onclick="raceClearAll()">Cancella tutto lo storico</button>';
+  $('raceHistory').innerHTML = html;
+}
+
+function renderRaceAll(run) {
+  drawRaceChart(run);
+  renderRaceTable(run);
+  renderRaceSim(run);
+  renderRaceHistory();
+}
+
+function raceDeleteLast() { races.shift(); saveRaces(); renderRaceAll(races[0] || null); }
+function raceClearAll() { races = []; saveRaces(); renderRaceAll(null); }
+
+function raceExportCsv() {
+  const rows = ['gara,data,durata_s,uscita,pila,tempo_s,tensione_V,temperatura_C'];
+  races.forEach((run, gi) => {
+    for (const ch of CHANNELS) {
+      const c = run.cells[ch];
+      if (!c || !c.curve) continue;
+      for (const [x, y] of c.curve) rows.push([races.length - gi, run.date, run.N, 'CH' + ch, c.name, x.toFixed(2), y.toFixed(3), ''].join(','));
+    }
+  });
+  const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'nc3000_gare_' + new Date().toISOString().slice(0, 10) + '.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+}
+
+$('btnRaceStart').onclick = raceStart;
+$('btnRaceAbort').onclick = raceAbort;
+document.querySelectorAll('[id^="r_"], #chkRace, #p_dischargeE').forEach(el => {
+  el.addEventListener('input', () => { saveNames(); updateRaceButton(); });
+  el.addEventListener('change', () => { saveNames(); updateRaceButton(); });
+});
+loadRaces();
+loadNames();
+renderRaceHistory();
+updateRaceButton();
+
+
+document.querySelectorAll('.modes button[data-mode]').forEach(b => b.addEventListener('click', () => setMode(Number(b.dataset.mode))));
 loadParams();
+applyModeRows();
 renderLatest();
 drawAll();
 </script>
