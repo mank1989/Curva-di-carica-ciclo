@@ -11,130 +11,130 @@
 <title>NC3000 Controllo</title>
 <style>
   :root {
-    --bg: #0a0e14; --panel: #111826; --panel2: #161f30; --line: #1f2a3d; --line2: #2a3850;
-    --text: #e7ecf5; --muted: #8492a8; --dim: #55627a;
-    --accent: #4ea1ff; --accent-ink: #04111f; --ok: #3ccf91; --warn: #f5b84b; --danger: #ff5c5c;
-    --r: 14px;
+    --bg: #080b10; --panel: #0f1520; --panel2: #151d2b; --line: #1c2638; --line2: #263349;
+    --text: #e8edf6; --muted: #7d8aa1; --dim: #4f5b72;
+    --accent: #4ea1ff; --ink: #03101c; --ok: #3ccf91; --warn: #f5b84b; --danger: #ff5c5c;
+    --c1: #4ea1ff; --c2: #ffb74d; --c3: #7ddc8a; --c4: #f07878;
+    --r: 12px;
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  html, body { margin: 0; background: var(--bg); color: var(--text); font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; font-variant-numeric: tabular-nums; }
-  body { min-height: 100vh; padding-bottom: calc(40px + env(safe-area-inset-bottom)); }
+  html, body { margin: 0; background: var(--bg); color: var(--text); font: 13px/1.35 Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; font-variant-numeric: tabular-nums; }
+  body { min-height: 100vh; padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
 
-  /* intestazione */
-  header.top { position: sticky; top: 0; z-index: 20; background: rgba(10,14,20,.94); backdrop-filter: blur(10px);
-               border-bottom: 1px solid var(--line); padding: calc(12px + env(safe-area-inset-top)) 16px 10px; }
-  .hrow { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 16px; letter-spacing: .2px; }
-  .logo { width: 28px; height: 28px; border-radius: 8px; background: linear-gradient(135deg, #4ea1ff, #2b6cd4);
-          display: grid; place-items: center; color: #fff; font-size: 14px; font-weight: 800; }
-  .brand small { color: var(--muted); font-weight: 500; font-size: 12px; margin-left: 2px; }
-  #status { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted);
-            background: var(--panel); border: 1px solid var(--line); padding: 6px 10px; border-radius: 999px; max-width: 58%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  #status::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--dim); flex: none; }
+  /* barra superiore compatta */
+  header.top { position: sticky; top: 0; z-index: 20; background: rgba(8,11,16,.92); backdrop-filter: blur(10px);
+               border-bottom: 1px solid var(--line); padding: calc(8px + env(safe-area-inset-top)) 12px 8px; }
+  .hrow { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .brand { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 14px; }
+  .logo { width: 24px; height: 24px; border-radius: 7px; display: grid; place-items: center; font-weight: 800; font-size: 12px; color: #fff;
+          background: linear-gradient(135deg, #5aa9ff, #2b6cd4); box-shadow: 0 0 0 1px rgba(255,255,255,.06) inset; }
+  .brand small { color: var(--muted); font-weight: 500; }
+  #status { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); background: var(--panel);
+            border: 1px solid var(--line); padding: 4px 9px; border-radius: 999px; max-width: 60%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #status::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--dim); flex: none; }
 
-  /* navigazione a schede */
-  .seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; margin-top: 10px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 4px; }
-  .seg button { font: inherit; font-size: 13px; font-weight: 600; color: var(--muted); background: transparent; border: 0; border-radius: 9px; padding: 9px 4px; min-height: 40px; cursor: pointer; }
+  .seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; margin-top: 8px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 3px; }
+  .seg button { font: inherit; font-size: 12px; font-weight: 600; color: var(--muted); background: transparent; border: 0; border-radius: 8px; padding: 7px 4px; min-height: 34px; cursor: pointer; }
   .seg button.active { background: var(--panel2); color: var(--text); box-shadow: inset 0 0 0 1px var(--line2); }
-  .seg button.active::after { content: ""; display: block; width: 18px; height: 2px; margin: 4px auto 0; border-radius: 2px; background: var(--accent); }
 
-  main { max-width: 820px; margin: 0 auto; padding: 14px 14px 24px; }
+  main { max-width: 900px; margin: 0 auto; padding: 10px 10px 16px; }
   .tab { display: none; }
-  .tab.active { display: block; animation: fade .18s ease-out; }
-  @keyframes fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+  .tab.active { display: block; }
 
-  /* titoli di sezione */
-  .sec { display: flex; align-items: baseline; justify-content: space-between; margin: 20px 2px 10px; }
-  .sec h2 { margin: 0; font-size: 13px; font-weight: 700; color: var(--text); text-transform: uppercase; letter-spacing: .9px; }
-  .sec span { font-size: 12px; color: var(--dim); }
+  .sec { display: flex; align-items: center; justify-content: space-between; margin: 12px 2px 6px; }
+  .sec h2 { margin: 0; font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .9px; }
+  .note { font-size: 11.5px; color: var(--muted); margin: 4px 2px; line-height: 1.4; }
+  .note b { color: var(--warn); }
 
-  .note { font-size: 13px; color: var(--muted); line-height: 1.5; margin: 6px 2px; }
-  .note b { color: var(--warn); font-weight: 600; }
-
-  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 14px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 10px; }
 
   /* pulsanti */
-  .actions { display: flex; flex-wrap: wrap; gap: 8px; }
-  button { font: inherit; font-size: 14px; font-weight: 600; border: 1px solid transparent; border-radius: 10px; padding: 10px 16px; min-height: 42px;
+  .actions { display: flex; flex-wrap: wrap; gap: 6px; }
+  button { font: inherit; font-size: 13px; font-weight: 600; border: 1px solid transparent; border-radius: 9px; padding: 8px 12px; min-height: 36px;
            background: var(--panel2); color: var(--text); cursor: pointer; transition: opacity .15s, transform .05s; }
   button:active { transform: scale(.98); }
-  button.primary { background: var(--accent); color: var(--accent-ink); }
+  button.primary { background: var(--accent); color: var(--ink); }
   button.danger { background: var(--danger); color: #fff; }
-  button.ghost { background: transparent; border-color: var(--line2); color: var(--text); }
-  button:disabled { background: var(--panel2); color: var(--dim); border-color: var(--line); cursor: not-allowed; opacity: .75; }
+  button.ghost { background: transparent; border-color: var(--line2); }
+  button.wide { flex: 1; }
+  button:disabled { background: var(--panel2); color: var(--dim); border-color: var(--line); cursor: not-allowed; opacity: .7; }
 
-  /* indicatori */
-  .kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-  .kpi { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
-  .kpi b { display: block; font-size: 22px; font-weight: 700; }
-  .kpi small { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .6px; }
+  /* riepilogo compatto */
+  .kpis { display: flex; gap: 6px; }
+  .kpi { flex: 1; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 6px 8px; display: flex; align-items: baseline; justify-content: space-between; }
+  .kpi b { font-size: 16px; }
+  .kpi small { font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
 
-  /* schede canali */
-  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; }
-  .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 14px; position: relative; overflow: hidden; }
-  .card::after { content: ""; position: absolute; inset: 0 auto 0 0; width: 3px; background: var(--line2); }
-  .card.on::after { background: var(--ok); }
-  .cardhead { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
-  .ch { font-weight: 800; font-size: 14px; letter-spacing: .5px; }
-  .badge { font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 999px; background: var(--panel2); color: var(--muted); border: 1px solid var(--line); }
+  /* canali: schede compatte */
+  .cards { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  @media (min-width: 680px) { .cards { grid-template-columns: repeat(4, 1fr); } }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 10px; position: relative; overflow: hidden; }
+  .card::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 2px; background: var(--line2); }
+  .card.on::before { background: var(--ok); }
+  .cardhead { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+  .ch { font-weight: 800; font-size: 12px; letter-spacing: .4px; }
+  .badge { font-size: 10px; font-weight: 600; padding: 2px 6px; border-radius: 999px; background: var(--panel2); color: var(--muted); border: 1px solid var(--line); }
   .badge.chg { color: var(--ok); border-color: rgba(60,207,145,.35); background: rgba(60,207,145,.08); }
-  .v { font-size: 32px; font-weight: 700; letter-spacing: -.6px; line-height: 1.1; }
-  .v small { font-size: 14px; color: var(--muted); font-weight: 500; margin-left: 3px; letter-spacing: 0; }
-  .metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 10px; }
-  .metrics div { background: var(--panel2); border-radius: 10px; padding: 7px 9px; }
-  .metrics b { font-size: 16px; font-weight: 700; }
-  .metrics small { display: block; font-size: 11px; color: var(--muted); }
-  .sub { font-size: 11px; color: var(--dim); margin-top: 10px; }
-  .card.idle { opacity: .55; }
+  .v { font-size: 26px; font-weight: 700; letter-spacing: -.5px; line-height: 1.1; }
+  .v small { font-size: 12px; color: var(--muted); font-weight: 500; margin-left: 2px; }
+  .metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-top: 6px; }
+  .metrics div { background: var(--panel2); border-radius: 7px; padding: 4px 6px; }
+  .metrics b { font-size: 13px; }
+  .metrics small { display: block; font-size: 10px; color: var(--muted); }
+  .sub { font-size: 10px; color: var(--dim); margin-top: 6px; }
+  .card.idle { opacity: .5; }
 
-  /* grafici */
-  .chart { background: #070a10; border: 1px solid var(--line); border-radius: var(--r); padding: 8px; }
-  canvas { width: 100%; height: 200px; display: block; border-radius: 10px; }
+  /* grafici compatti */
+  .charts { display: grid; grid-template-columns: 1fr; gap: 8px; }
+  @media (min-width: 680px) { .charts { grid-template-columns: 1fr 1fr; } }
+  .chart { background: #05080d; border: 1px solid var(--line); border-radius: var(--r); padding: 6px; }
+  .chart h3 { margin: 2px 4px 4px; font-size: 10.5px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .6px; }
+  canvas { width: 100%; height: 150px; display: block; border-radius: 8px; }
 
-  /* programma */
-  .group { margin-top: 12px; }
-  .group h3 { margin: 0 2px 8px; font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .8px; }
-  .fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px; }
-  .field { display: flex; flex-direction: column; gap: 6px; }
-  .field > span { font-size: 12px; color: var(--muted); }
-  .inp { display: flex; align-items: center; background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; padding: 0 10px; transition: border-color .15s; }
-  .inp:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(78,161,255,.15); }
-  .inp input { flex: 1; min-width: 0; font: inherit; font-size: 16px; padding: 10px 2px; background: transparent; color: var(--text); border: 0; outline: none; }
-  .inp small { color: var(--dim); font-size: 11px; margin-left: 6px; white-space: nowrap; }
-  select { font: inherit; font-size: 15px; width: 100%; padding: 10px; background: var(--panel2); color: var(--text); border: 1px solid var(--line); border-radius: 10px; outline: none; }
-  select:focus { border-color: var(--accent); }
+  /* programma: griglia compatta a sezioni ripiegabili */
+  details.grp { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); margin-bottom: 8px; overflow: hidden; }
+  details.grp > summary { list-style: none; cursor: pointer; padding: 9px 10px; font-size: 11px; font-weight: 700; color: var(--text); text-transform: uppercase; letter-spacing: .7px; display: flex; justify-content: space-between; align-items: center; }
+  details.grp > summary::-webkit-details-marker { display: none; }
+  details.grp > summary::after { content: "▾"; color: var(--muted); transition: transform .15s; }
+  details.grp[open] > summary::after { transform: rotate(180deg); }
+  .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; padding: 0 10px 10px; }
+  @media (min-width: 680px) { .grid { grid-template-columns: repeat(3, 1fr); } }
+  .field { display: flex; flex-direction: column; gap: 3px; }
+  .field > span { font-size: 10.5px; color: var(--muted); }
+  .inp { display: flex; align-items: center; background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 0 8px; }
+  .inp:focus-within { border-color: var(--accent); }
+  .inp input, select { flex: 1; min-width: 0; font: inherit; font-size: 14px; padding: 7px 2px; background: transparent; color: var(--text); border: 0; outline: none; }
+  select { width: 100%; background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 7px 8px; }
+  .inp small { color: var(--dim); font-size: 10px; margin-left: 4px; white-space: nowrap; }
   input.bad { color: var(--danger); }
   .field:has(input.bad) .inp { border-color: var(--danger); background: rgba(255,92,92,.07); }
 
-  .errbox { margin: 12px 0 0; }
-  .err { font-size: 13px; color: #ff9d9d; margin: 3px 2px; }
-  .ok { font-size: 13px; color: var(--ok); margin: 3px 2px; }
+  .errbox { padding: 0 10px; }
+  .err { font-size: 11.5px; color: #ff9d9d; margin: 2px 0; }
+  .ok { font-size: 11.5px; color: var(--ok); margin: 2px 0; }
 
-  #preview { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; line-height: 1.6; white-space: pre-wrap; word-break: break-all;
-             background: #070a10; border: 1px solid var(--line); border-radius: 10px; padding: 12px; color: #aab6cc; }
+  #preview { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11px; line-height: 1.5; white-space: pre-wrap; word-break: break-all;
+             background: #05080d; border: 1px solid var(--line); border-radius: 9px; padding: 9px; color: #9fb0c9; }
 
-  .confirm { display: grid; gap: 12px; }
-  .confirm label { font-size: 13px; color: var(--muted); display: grid; gap: 6px; }
-  .confirm input[type=text] { font: inherit; font-size: 16px; padding: 11px 12px; background: var(--panel2); color: var(--text); border: 1px solid var(--line); border-radius: 10px; letter-spacing: 3px; text-transform: uppercase; outline: none; }
-  .confirm input[type=text]:focus { border-color: var(--accent); }
-  .confirm .chk { display: flex; align-items: center; gap: 10px; }
-  .confirm .chk input { width: 18px; height: 18px; accent-color: var(--accent); }
+  /* avvio e stop: due colonne */
+  .twin { display: grid; grid-template-columns: 1fr; gap: 8px; }
+  @media (min-width: 680px) { .twin { grid-template-columns: 1fr 1fr; } }
+  .start { display: grid; gap: 8px; }
+  .chk { display: flex; align-items: flex-start; gap: 8px; font-size: 11.5px; color: var(--muted); cursor: pointer; }
+  .chk input { width: 16px; height: 16px; margin-top: 1px; accent-color: var(--accent); flex: none; }
+  .hint { font-size: 11px; color: var(--dim); margin: 0; min-height: 14px; }
 
-  #log { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; line-height: 1.5; height: 62vh; overflow: auto; background: #070a10;
-         border: 1px solid var(--line); border-radius: var(--r); padding: 12px; white-space: pre; color: #aab6cc; }
+  #log { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11px; line-height: 1.45; height: 58vh; overflow: auto; background: #05080d;
+         border: 1px solid var(--line); border-radius: var(--r); padding: 9px; white-space: pre; color: #9fb0c9; }
 
-  footer { margin-top: 26px; font-size: 11px; color: var(--dim); text-align: center; }
-
-  @media (min-width: 760px) {
-    .kpis { grid-template-columns: repeat(3, 200px); }
-  }
+  footer { margin-top: 14px; font-size: 10.5px; color: var(--dim); text-align: center; }
 </style>
 </head>
 <body>
 
 <header class="top">
   <div class="hrow">
-    <div class="brand"><div class="logo">N</div><div>NC3000<small> controllo</small></div></div>
+    <div class="brand"><div class="logo">N</div><div>NC3000 <small>controllo</small></div></div>
     <span id="status">Non connesso</span>
   </div>
   <nav class="seg">
@@ -148,121 +148,120 @@
 
   <!-- MONITOR -->
   <section id="tab-monitor" class="tab active">
-    <div class="actions" style="margin-top:4px">
-      <button id="btnConnect" class="primary">Connetti</button>
-      <button id="btnPoll" class="ghost" disabled>Avvia letture</button>
+    <div class="actions" style="margin:6px 0 8px">
+      <button id="btnConnect" class="primary wide">Connetti</button>
+      <button id="btnPoll" class="ghost" disabled>Letture</button>
       <button id="btnDisc" class="ghost" disabled>Disconnetti</button>
-      <button id="btnExport" class="ghost" disabled>Esporta CSV</button>
+      <button id="btnExport" class="ghost" disabled>CSV</button>
     </div>
 
-    <div class="sec"><h2>Riepilogo</h2><span>sessione corrente</span></div>
     <div class="kpis">
-      <div class="kpi"><b id="tx">0</b><small>inviati</small></div>
-      <div class="kpi"><b id="rxok">0</b><small>valide</small></div>
-      <div class="kpi"><b id="rxbad">0</b><small>scartate</small></div>
+      <div class="kpi"><small>inviati</small><b id="tx">0</b></div>
+      <div class="kpi"><small>valide</small><b id="rxok">0</b></div>
+      <div class="kpi"><small>scartate</small><b id="rxbad">0</b></div>
     </div>
 
-    <div class="sec"><h2>Canali</h2><span>aggiornamento ~1 s</span></div>
+    <div class="sec"><h2>Canali</h2></div>
     <div id="latest" class="cards"></div>
-    <p class="note">* Contatore: unità ipotizzata di 0,5 mAh caricati, coerente con 0,5 A. Il modo (byte 18) è ancora da confermare.</p>
+    <p class="note">* Contatore: unità ipotizzata di 0,5 mAh caricati (coerente con 0,5 A). Il modo (byte 18) è da confermare.</p>
 
-    <div class="sec"><h2>Tensione</h2><span>V per canale</span></div>
-    <div class="chart"><canvas id="chartV"></canvas></div>
-    <div class="sec"><h2>Temperatura</h2><span>°C per canale</span></div>
-    <div class="chart"><canvas id="chartT"></canvas></div>
+    <div class="sec"><h2>Andamento</h2></div>
+    <div class="charts">
+      <div class="chart"><h3>Tensione (V)</h3><canvas id="chartV"></canvas></div>
+      <div class="chart"><h3>Temperatura (°C)</h3><canvas id="chartT"></canvas></div>
+    </div>
   </section>
 
   <!-- PROGRAMMA -->
   <section id="tab-program" class="tab">
-    <div class="panel" style="border-color:rgba(245,184,75,.35)">
-      <p class="note" style="margin:0"><b>Attenzione.</b> Qui si avviano cicli reali. Ogni avvio mostra prima l'anteprima dei byte e richiede conferma. Prova prima su un canale senza pila, poi con una pila a 100 mA.</p>
+    <p class="note" style="margin:4px 2px 8px"><b>Attenzione.</b> Qui si avviano cicli reali. Genera sempre l'anteprima prima di avviare. Prova prima su un canale senza pila, poi con una pila a 100 mA.</p>
+
+    <details class="grp" open>
+      <summary>Canale e capacità</summary>
+      <div class="grid">
+        <label class="field"><span>Canale</span>
+          <select id="p_position"><option value="1">CH1</option><option value="2">CH2</option><option value="3">CH3</option><option value="4">CH4</option></select></label>
+        <label class="field"><span>Capacità</span><div class="inp"><input type="number" id="p_capacity" value="950" inputmode="numeric"><small>mAh</small></div></label>
+        <label class="field"><span>Modello</span><div class="inp"><input type="number" id="p_model" value="0" inputmode="numeric"></div></label>
+      </div>
+    </details>
+
+    <details class="grp" open>
+      <summary>Correnti e tensioni</summary>
+      <div class="grid">
+        <label class="field"><span>Carica</span><div class="inp"><input type="number" id="p_chargeE" value="500" inputmode="numeric"><small>mA</small></div></label>
+        <label class="field"><span>Scarica</span><div class="inp"><input type="number" id="p_dischargeE" value="2500" inputmode="numeric"><small>mA</small></div></label>
+        <label class="field"><span>Fine carica</span><div class="inp"><input type="number" id="p_inStopVoltage" value="1700" inputmode="numeric"><small>mV</small></div></label>
+        <label class="field"><span>Fine scarica</span><div class="inp"><input type="number" id="p_outStopVoltage" value="990" inputmode="numeric"><small>mV</small></div></label>
+        <label class="field"><span>Fine carica (I)</span><div class="inp"><input type="number" id="p_inStopCurrent" value="0" inputmode="numeric"><small>0 off</small></div></label>
+        <label class="field"><span>Fine scarica (I)</span><div class="inp"><input type="number" id="p_outStopCurrent" value="0" inputmode="numeric"><small>0 usa scar.</small></div></label>
+      </div>
+    </details>
+
+    <details class="grp" open>
+      <summary>Pause e cicli</summary>
+      <div class="grid">
+        <label class="field"><span>Pausa dopo carica</span><div class="inp"><input type="number" id="p_chargeRestTime" value="5" inputmode="numeric"><small>min</small></div></label>
+        <label class="field"><span>Pausa dopo scarica</span><div class="inp"><input type="number" id="p_dischargeRestTime" value="10" inputmode="numeric"><small>min</small></div></label>
+        <label class="field"><span>Cicli</span><div class="inp"><input type="number" id="p_cycleCount" value="3" inputmode="numeric"></div></label>
+        <label class="field"><span>Modalità ciclo</span><div class="inp"><input type="number" id="p_cycleMode" value="0" inputmode="numeric"><small>0 predef.</small></div></label>
+        <label class="field"><span>Delta V</span><div class="inp"><input type="number" id="p_detalV" value="6" inputmode="numeric"><small>mV</small></div></label>
+      </div>
+    </details>
+
+    <details class="grp">
+      <summary>Protezioni</summary>
+      <div class="grid">
+        <label class="field"><span>Timer spegnimento</span><div class="inp"><input type="number" id="p_inTimeProtect" value="180" inputmode="numeric"><small>min</small></div></label>
+        <label class="field"><span>Temp. massima</span><div class="inp"><input type="number" id="p_tempProtect" value="60" inputmode="numeric"><small>°C</small></div></label>
+        <label class="field"><span>Capacità massima</span><div class="inp"><input type="number" id="p_inMaxbostCapacity" value="300" inputmode="numeric"><small>mAh</small></div></label>
+      </div>
+    </details>
+
+    <details class="grp">
+      <summary>Avanzate · da confermare</summary>
+      <div class="grid">
+        <label class="field"><span>Trickle</span><div class="inp"><input type="number" id="p_track" value="0" inputmode="numeric"><small>mA</small></div></label>
+        <label class="field"><span>Mantenimento</span><div class="inp"><input type="number" id="p_restartVolt" value="0" inputmode="numeric"><small>mV</small></div></label>
+        <label class="field"><span>Turbo</span><div class="inp"><input type="number" id="p_truboMode" value="0" inputmode="numeric"><small>0 / 1</small></div></label>
+      </div>
+    </details>
+
+    <div class="errbox" id="errors"></div>
+    <div class="actions" style="margin:8px 0 4px"><button id="btnPreview" class="primary wide">Genera anteprima</button></div>
+    <div id="preview" style="margin-top:6px">Premi Genera anteprima per vedere i byte che verranno inviati.</div>
+
+    <div class="sec"><h2>Avvio</h2></div>
+    <div class="twin">
+      <div class="panel start">
+        <label class="chk"><input type="checkbox" id="chkStart"> Confermo l'avvio di questo programma sul canale selezionato</label>
+        <button id="btnStart" class="danger" disabled>Avvia questo canale</button>
+        <p id="startHint" class="hint"></p>
+      </div>
+      <div class="panel start">
+        <label class="chk"><input type="checkbox" id="chkAll"> Confermo l'avvio di questo programma su tutti e quattro i canali</label>
+        <button id="btnStartAll" class="danger" disabled>Avvia tutti i canali</button>
+        <p id="startAllHint" class="hint"></p>
+      </div>
     </div>
 
-    <div class="sec"><h2>Programma</h2><span>parametri del canale</span></div>
-    <div class="panel">
-      <div class="group" style="margin-top:0">
-        <h3>Canale e capacità</h3>
-        <div class="fields">
-          <label class="field"><span>Canale</span>
-            <select id="p_position"><option value="1">CH1</option><option value="2">CH2</option><option value="3">CH3</option><option value="4">CH4</option></select></label>
-          <label class="field"><span>Capacità</span>
-            <div class="inp"><input type="number" id="p_capacity" value="950" inputmode="numeric"><small>mAh</small></div></label>
-        </div>
-      </div>
-
-      <div class="group">
-        <h3>Correnti e tensioni</h3>
-        <div class="fields">
-          <label class="field"><span>Carica</span><div class="inp"><input type="number" id="p_chargeE" value="500" inputmode="numeric"><small>mA</small></div></label>
-          <label class="field"><span>Scarica</span><div class="inp"><input type="number" id="p_dischargeE" value="2500" inputmode="numeric"><small>mA</small></div></label>
-          <label class="field"><span>Fine carica</span><div class="inp"><input type="number" id="p_inStopVoltage" value="1700" inputmode="numeric"><small>mV</small></div></label>
-          <label class="field"><span>Fine scarica</span><div class="inp"><input type="number" id="p_outStopVoltage" value="990" inputmode="numeric"><small>mV</small></div></label>
-          <label class="field"><span>Corrente fine carica</span><div class="inp"><input type="number" id="p_inStopCurrent" value="0" inputmode="numeric"><small>0 = off</small></div></label>
-          <label class="field"><span>Corrente fine scarica</span><div class="inp"><input type="number" id="p_outStopCurrent" value="0" inputmode="numeric"><small>0 = usa scarica</small></div></label>
-        </div>
-      </div>
-
-      <div class="group">
-        <h3>Pause e cicli</h3>
-        <div class="fields">
-          <label class="field"><span>Pausa dopo carica</span><div class="inp"><input type="number" id="p_chargeRestTime" value="5" inputmode="numeric"><small>min</small></div></label>
-          <label class="field"><span>Pausa dopo scarica</span><div class="inp"><input type="number" id="p_dischargeRestTime" value="10" inputmode="numeric"><small>min</small></div></label>
-          <label class="field"><span>Cicli</span><div class="inp"><input type="number" id="p_cycleCount" value="3" inputmode="numeric"></div></label>
-          <label class="field"><span>Modalità ciclo</span><div class="inp"><input type="number" id="p_cycleMode" value="0" inputmode="numeric"><small>0 predef.</small></div></label>
-          <label class="field"><span>Delta V</span><div class="inp"><input type="number" id="p_detalV" value="6" inputmode="numeric"><small>mV</small></div></label>
-        </div>
-      </div>
-
-      <div class="group">
-        <h3>Protezioni</h3>
-        <div class="fields">
-          <label class="field"><span>Timer spegnimento</span><div class="inp"><input type="number" id="p_inTimeProtect" value="180" inputmode="numeric"><small>min</small></div></label>
-          <label class="field"><span>Temperatura massima</span><div class="inp"><input type="number" id="p_tempProtect" value="60" inputmode="numeric"><small>°C</small></div></label>
-          <label class="field"><span>Capacità massima</span><div class="inp"><input type="number" id="p_inMaxbostCapacity" value="300" inputmode="numeric"><small>mAh</small></div></label>
-        </div>
-      </div>
-
-      <div class="group">
-        <h3>Avanzate · da confermare</h3>
-        <div class="fields">
-          <label class="field"><span>Modello</span><div class="inp"><input type="number" id="p_model" value="0" inputmode="numeric"></div></label>
-          <label class="field"><span>Trickle</span><div class="inp"><input type="number" id="p_track" value="0" inputmode="numeric"><small>mA</small></div></label>
-          <label class="field"><span>Mantenimento</span><div class="inp"><input type="number" id="p_restartVolt" value="0" inputmode="numeric"><small>mV</small></div></label>
-          <label class="field"><span>Turbo</span><div class="inp"><input type="number" id="p_truboMode" value="0" inputmode="numeric"><small>0 / 1</small></div></label>
-        </div>
-      </div>
-
-      <div class="errbox" id="errors"></div>
-    </div>
-
-    <div class="sec"><h2>Anteprima</h2><span>byte esatti da inviare</span></div>
-    <div class="actions"><button id="btnPreview" class="primary">Genera anteprima</button></div>
-    <div id="preview" style="margin-top:10px">Premi Genera anteprima per vedere i byte che verranno inviati.</div>
-
-    <div class="sec"><h2>Avvio</h2><span>richiede conferma</span></div>
-    <div class="panel confirm">
-      <label class="chk"><input type="checkbox" id="chkStart"> Confermo di voler avviare questo programma sul canale selezionato</label>
-      <div class="actions"><button id="btnStart" class="danger" disabled>Avvia programma</button></div>
-      <p id="startHint" class="note"></p>
-    </div>
-
-    <div class="sec"><h2>Stop</h2><span>arresto immediato</span></div>
-    <div class="panel">
+    <div class="sec"><h2>Stop</h2></div>
+    <div class="panel start">
       <div class="actions">
-        <button id="btnStopCh" class="danger" disabled>Ferma canale selezionato</button>
-        <button id="btnStopAll" class="danger" disabled>Ferma tutti i canali</button>
+        <button id="btnStopCh" class="danger wide" disabled>Ferma canale selezionato</button>
+        <button id="btnStopAll" class="danger wide" disabled>Ferma tutti</button>
       </div>
-      <p id="stopHint" class="note"></p>
+      <p id="stopHint" class="hint"></p>
     </div>
   </section>
 
   <!-- REGISTRO -->
   <section id="tab-log" class="tab">
-    <div class="sec"><h2>Registro</h2><span>comandi e risposte</span></div>
+    <div class="sec"><h2>Registro</h2></div>
     <div id="log"></div>
   </section>
 
-  <footer>NC3000 controllo · sola pagina di servizio, nessun dato è inviato a terzi</footer>
+  <footer>NC3000 controllo</footer>
 </main>
 
 <script>
@@ -294,6 +293,7 @@ let rxBuf = [], samples = [], latest = {};
 let t0 = 0, txCount = 0, rxOk = 0, rxBad = 0, lastDraw = 0;
 let logLines = [];
 let previewedKey = null;
+let previewedAllKey = null;
 
 const $ = id => document.getElementById(id);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -611,6 +611,7 @@ function renderPreview() {
     : '<div class="ok">Valori nei limiti</div>';
   if (errs.length) {
     previewedKey = null;
+    previewedAllKey = null;
     $('preview').textContent = 'Correggi i valori evidenziati in rosso.';
     updateStartButton();
     return;
@@ -630,6 +631,7 @@ function renderPreview() {
   ];
   $('preview').textContent = lines.join('\n');
   previewedKey = JSON.stringify(p);
+  previewedAllKey = JSON.stringify(Object.assign({}, p, { position: 0 }));
   updateStartButton();
 }
 
@@ -646,6 +648,15 @@ function startReasons() {
   return why;
 }
 
+function startAllReasons() {
+  const why = [];
+  if (!char) why.push('Connetti prima il caricabatterie');
+  if (previewedAllKey === null) why.push('Genera l\'anteprima');
+  else if (previewedAllKey !== JSON.stringify(Object.assign({}, readParams(), { position: 0 }))) why.push('valori cambiati: rigenera l\'anteprima');
+  if (!$('chkAll').checked) why.push('spunta la conferma');
+  return why;
+}
+
 function stopReasons() {  // lo stop è immediato: basta essere connessi
   const why = [];
   if (!char) why.push('Connetti prima il caricabatterie');
@@ -658,6 +669,9 @@ function updateStartButton() {
   $('btnStart').disabled = sr.length > 0;
   $('btnStopCh').disabled = tr.length > 0;
   $('btnStopAll').disabled = tr.length > 0;
+  const ar = startAllReasons();
+  $('btnStartAll').disabled = ar.length > 0;
+  $('startAllHint').textContent = ar.length ? 'Per avviare tutti: ' + ar.join(' · ') : 'Pronto: avvia CH1–CH4 con questi valori';
   $('startHint').textContent = sr.length ? 'Per avviare: ' + sr.join(' · ') : 'Pronto all\'avvio';
   $('stopHint').textContent = tr.length ? 'Per fermare: ' + tr.join(' · ') : 'Stop immediato sul canale selezionato o su tutti';
 }
@@ -670,6 +684,18 @@ function startProgram() {
   addLog('Programma inviato su CH' + p.position + '. Controlla lo schermo del caricabatterie e le letture.');
   $('startHint').textContent = 'Programma inviato. Controlla lo schermo del caricabatterie.';
   $('chkStart').checked = false;
+  updateStartButton();
+}
+
+function startAll() {
+  const p = readParams();
+  if (previewedAllKey !== JSON.stringify(Object.assign({}, p, { position: 0 }))) { addLog('Anteprima non aggiornata'); return; }
+  for (const pos of [1, 2, 3, 4]) {
+    enqueue(CMD_START, Array.from(buildSettings(Object.assign({}, p, { position: pos }))), '0x94 CH' + pos + ' (tutti)');
+  }
+  addLog('Programma inviato su CH1–CH4.');
+  $('chkAll').checked = false;
+  $('startAllHint').textContent = 'Inviato a CH1–CH4. Controlla lo schermo del caricabatterie.';
   updateStartButton();
 }
 
@@ -715,11 +741,13 @@ $('btnDisc').onclick = disconnect;
 $('btnExport').onclick = exportCsv;
 $('btnPreview').onclick = () => { saveParams(); renderPreview(); };
 $('btnStart').onclick = startProgram;
+$('btnStartAll').onclick = startAll;
+$('chkAll').onchange = updateStartButton;
 $('btnStopCh').onclick = () => stopChannel(Number($('p_position').value));
 $('btnStopAll').onclick = stopAll;
 $('chkStart').onchange = updateStartButton;
 for (const id of ['p_position','p_capacity','p_chargeE','p_dischargeE','p_inStopVoltage','p_outStopVoltage','p_inStopCurrent','p_outStopCurrent','p_chargeRestTime','p_dischargeRestTime','p_cycleCount','p_cycleMode','p_detalV','p_inTimeProtect','p_tempProtect','p_inMaxbostCapacity','p_track','p_restartVolt','p_truboMode','p_model']) {
-  $(id).addEventListener('input', () => { previewedKey = null; updateStartButton(); });
+  $(id).addEventListener('input', () => { previewedKey = null; if (id !== 'p_position') previewedAllKey = null; updateStartButton(); });
 }
 
 
