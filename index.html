@@ -1547,13 +1547,20 @@ function estimateChannel(ch) {
     if (s.t < tEnd - 12) break;
     if (s.ch === ch) pts.push(s);
   }
-  if (pts.length < 3) return { phase: 'in attesa di dati', mA: null };
   pts.reverse();
-  const ts = pts.map(p => p.t);
-  const mA = slopeOf(ts, pts.map(p => p.raw1011)) * 1800; // mA = pendenza × 0,5 mAh × 3600
-  const vSlope = slopeOf(ts, pts.map(p => p.mV));          // mV al secondo
-  if (vSlope < -2) return { phase: 'scarica (stima)', mA: null };
-  if (mA > 20) return { phase: 'in carica (stima)', mA: Math.round(mA) };
+  // se il contatore è tornato indietro (reset), si usano solo i campioni dopo il reset
+  let start = 0;
+  for (let i = 1; i < pts.length; i++) {
+    if (pts[i].raw1011 < pts[i - 1].raw1011) start = i;
+  }
+  const win = pts.slice(start);
+  if (win.length < 3) return { phase: 'in attesa di dati', mA: null };
+  const ts = win.map(p => p.t);
+  const mA = slopeOf(ts, win.map(p => p.raw1011)) * 1800; // mA = pendenza × 0,5 mAh × 3600
+  const vSlope = slopeOf(ts, win.map(p => p.mV));          // mV al secondo
+  if (Math.abs(mA) > 2500) return { phase: 'in attesa di dati', mA: null }; // valore non plausibile
+  if (vSlope < -2) return { phase: 'scarica', mA: null };
+  if (mA > 20) return { phase: 'in carica', mA: Math.round(mA) };
   return { phase: 'a riposo', mA: 0 };
 }
 
@@ -1565,16 +1572,13 @@ function renderLatest() {
       return '<div class="card idle"><div class="cardhead"><span class="ch" style="color:' + COLORS[ch] + '">CH' + ch +
              '</span><span class="badge">in attesa</span></div><div class="v">—</div></div>';
     }
-    const modo = s.mode.toString(16).padStart(2, '0');
     const est = estimateChannel(ch);
     const fase = est.mA !== null && est.mA > 0 ? est.phase + ' · ' + est.mA + ' mA' : est.phase;
-    return '<div class="card on"><div class="cardhead"><span class="ch" style="color:' + COLORS[ch] + '">CH' + ch +
-           '</span><span class="badge' + (s.mode === 0x02 ? ' chg' : '') + '">modo ' + modo + '</span></div>' +
+    return '<div class="card on"><div class="cardhead"><span class="ch" style="color:' + COLORS[ch] + '">CH' + ch + '</span></div>' +
            '<div class="v">' + (s.mV / 1000).toFixed(3) + '<small> V</small></div>' +
            '<div class="metrics"><div><b>' + s.tempC + '</b><small>°C</small></div>' +
            '<div><b>' + (s.raw1011 * 0.5).toFixed(1) + '</b><small>mAh*</small></div></div>' +
-           '<div class="sub">' + fase + '</div>' +
-           '<div class="sub">aggiornato ' + s.t.toFixed(1) + ' s · contatore ' + s.counter + ' s</div></div>';
+           '<div class="sub">' + fase + '</div></div>';
   }).join('');
 }
 
