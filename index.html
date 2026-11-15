@@ -121,6 +121,10 @@
   .countdown { font-size: 52px; font-weight: 700; text-align: center; color: #4a5060; margin: 14px 0 4px; font-variant-numeric: tabular-nums; }
   .countdown.live { color: var(--accent); }
   .tbl tr.best td { color: var(--accent); font-weight: 600; }
+  .warnc { color: var(--danger); }
+  .hright { display: flex; gap: 6px; align-items: center; }
+  .badge.rint { font-size: 12px; font-weight: 700; padding: 3px 9px; border: 1px solid var(--line2); background: var(--row); }
+  .badge.err { color: var(--danger); border-color: rgba(255,69,58,.4); }
   footer { margin-top: 16px; font-size: 11px; color: var(--dim); text-align: center; }
 </style>
 </head>
@@ -167,7 +171,7 @@
     <div class="sec">ANDAMENTO</div>
     <div class="charts">
       <div class="chart"><h3>Tensione</h3><canvas id="chartV"></canvas></div>
-      <div class="chart"><h3>Temperatura</h3><canvas id="chartT"></canvas></div>
+      <div class="chart"><h3>Resistenza interna</h3><canvas id="chartT"></canvas></div>
     </div>
   </section>
 
@@ -269,7 +273,7 @@
 
     <div class="sec">AVVISI</div>
     <div class="group">
-      <div class="row"><label>Temperatura massima</label><div class="val"><input type="number" id="a_temp" value="45" inputmode="numeric"><span class="unit">°C</span></div></div>
+      <div class="row"><label>Resistenza interna massima</label><div class="val"><input type="number" id="a_temp" value="40" inputmode="numeric"><span class="unit">mΩ</span></div></div>
       <div class="row"><label>Tensione minima in gara</label><div class="val"><input type="number" id="a_vmin" value="1.05" step="0.01" inputmode="decimal"><span class="unit">V</span></div></div>
       <div class="row"><label>Avviso sonoro</label><div class="val"><select id="a_mode"><option value="suono">Suono</option><option value="vibrazione">Vibrazione</option><option value="silenzio">Silenzio</option></select></div></div>
     </div>
@@ -507,17 +511,31 @@ function handleFrame(f) {
     return;
   }
   const ch = POS_OF_MASK[f[3]];
-  if (ch === undefined || f.length < 20) {
+  if (ch === undefined || f.length < 22) {
     addLog(t.toFixed(1).padStart(8) + ' s  RX dati non riconosciuti ' + hex(f));
     return;
   }
+  // campi come nel parser dell'app ufficiale (setNc3000Data)
   const be = i => (f[i] << 8) | f[i + 1];
-  const s = { t, ch, mV: be(6), tempC: be(16), counter: be(14), raw45: be(4), raw1011: be(10), raw1819: be(18), mode: f[18], hex: hex(f) };
+  const s = {
+    t, ch,
+    mV: be(6),                                                   // tensione, mV
+    mA: be(4),                                                   // corrente, mA
+    ir: be(16),                                                  // resistenza interna, mΩ
+    cap: be(10),                                                 // capacità della fase, mAh
+    dV: be(8),                                                   // temperatura secondo il parser dell'app; 0 = non trasmessa
+    counter: ((f[12] << 24) >>> 0) + (f[13] << 16) + (f[14] << 8) + f[15], // tempo, s
+    stato: f[18],                                                // 2 carica, 3 scarica, 4 riposo, 5/6 completato
+    modo: f[19],                                                 // 0 carica, 1 scarica, 3 ciclo, 4 MaxBoost, 5 turbo
+    err: f[20],                                                  // codice di errore (0 = nessuno)
+    hex: hex(f)
+  };
   samples.push(s);
   if (samples.length > MAX_SAMPLES) samples.shift();
   latest[ch] = s;
   checkAlarms(s);
-  addLog(t.toFixed(1).padStart(8) + ' s  CH' + ch + '  ' + (s.mV / 1000).toFixed(3) + ' V  ' + s.tempC + ' °C  cnt ' + s.counter);
+  addLog(t.toFixed(1).padStart(8) + ' s  CH' + ch + '  ' + (s.mV / 1000).toFixed(3) + ' V  ' +
+         (s.mA / 1000).toFixed(2) + ' A  ' + s.ir + ' mΩ');
   renderLatest();
   if (performance.now() - lastDraw > 500) { lastDraw = performance.now(); drawAll(); }
 }
@@ -542,12 +560,12 @@ function onData(ev) {
 
 function seriesOf(kind) {
   const out = { 1: [], 2: [], 3: [], 4: [] };
-  for (const s of samples) out[s.ch].push([s.t, kind === 'V' ? s.mV / 1000 : s.tempC]);
+  for (const s of samples) out[s.ch].push([s.t, kind === 'V' ? s.mV / 1000 : s.ir]);
   for (const ch of CHANNELS) if (out[ch].length > DRAW_POINTS) out[ch] = out[ch].slice(-DRAW_POINTS);
   return out;
 }
 
-function drawChart(id, series, fmt) {
+function drawChart(id, series, fmt, refY) {
   const cv = $(id);
   const dpr = window.devicePixelRatio || 1;
   const w = cv.clientWidth, h = cv.clientHeight;
@@ -563,12 +581,18 @@ function drawChart(id, series, fmt) {
     if (v < y1) y1 = v; if (v > y2) y2 = v;
   }
   if (count < 2) { ctx.fillText('in attesa di risposte…', 10, 20); return; }
+  if (refY !== undefined) { y1 = Math.min(y1, refY); y2 = Math.max(y2, refY); }
   if (y1 === y2) { y1 -= 0.5; y2 += 0.5; }
   const pad = (y2 - y1) * 0.08; y1 -= pad; y2 += pad;
   const span = Math.max(t2 - t1, 1);
   const L = 60, R = w - 10, T = 14, B = h - 22;
   const X = t => L + (t - t1) / span * (R - L);
   const Y = v => B - (v - y1) / (y2 - y1) * (B - T);
+  if (refY !== undefined && refY >= y1 && refY <= y2) {
+    ctx.save(); ctx.setLineDash([5, 4]); ctx.strokeStyle = '#ff453a'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(L, Y(refY)); ctx.lineTo(R, Y(refY)); ctx.stroke();
+    ctx.fillStyle = '#ff453a'; ctx.fillText(refY + ' mΩ', R - 60, Y(refY) - 4); ctx.restore();
+  }
   ctx.strokeStyle = '#333'; ctx.beginPath(); ctx.moveTo(L, T); ctx.lineTo(L, B); ctx.lineTo(R, B); ctx.stroke();
   ctx.fillStyle = '#aaa';
   ctx.fillText(fmt(y2), 4, T + 8); ctx.fillText(fmt(y1), 4, B);
@@ -587,7 +611,7 @@ function drawChart(id, series, fmt) {
 
 function drawAll() {
   drawChart('chartV', seriesOf('V'), v => v.toFixed(3) + ' V');
-  drawChart('chartT', seriesOf('T'), v => v.toFixed(0) + ' °C');
+  drawChart('chartT', seriesOf('R'), v => v.toFixed(0) + ' mΩ', 40);
 }
 
 function startPolling() {
@@ -778,9 +802,9 @@ function stopAll() {
 }
 
 function exportCsv() {
-  const rows = ['tempo_s,canale,tensione_mV,temperatura_C,contatore_s,byte10_11,byte18,hex'];
+  const rows = ['tempo_s,canale,tensione_mV,corrente_mA,resistenza_mOhm,capacita_mAh,dV_mV,stato,modo,errore,hex'];
   for (const s of samples) {
-    rows.push([s.t.toFixed(3), 'CH' + s.ch, s.mV, s.tempC, s.counter, s.raw1011, s.mode, s.hex.replace(/ /g, '')].join(','));
+    rows.push([s.t.toFixed(3), 'CH' + s.ch, s.mV, s.mA, s.ir, s.cap, s.dV, s.stato, s.modo, s.err, s.hex.replace(/ /g, '')].join(','));
   }
   const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
   const a = document.createElement('a');
@@ -894,6 +918,254 @@ function updateRaceButton() {
   $('raceHint').textContent = rr.length ? 'Per avviare: ' + rr.join(' · ') : 'Pronto';
 }
 
+/* ===================== MISURE DI GARA E ACCOPPIAMENTO ===================== */
+function isNum(v) { return typeof v === 'number' && isFinite(v); }
+function unitStr(v, d, unit) { return isNum(v) ? fmt(v, d) + unit : '—'; }
+
+// temperatura dal parser dell'app (byte 8-9); 0 = sonda non trasmessa
+function tempOf(s) {
+  if (isNum(s.dV) && s.dV > 0) return s.dV;
+  if (isNum(s.tempC) && s.tempC > 0) return s.tempC;
+  return null;
+}
+
+// contatore a 16 bit (mAh): differenza tra due letture
+function counterDelta(a, b) { return (b - a + 65536) % 65536; }
+
+function computeRun(r) {
+  const run = { id: Date.now(), date: new Date().toLocaleString('it-IT'), N: r.N, I: r.I, cells: {} };
+  for (const ch of r.chans) {
+    const ts = r.tStart[ch];
+    const name = r.names[ch];
+    if (ts === undefined) { run.cells[ch] = { name, n: 0 }; continue; }
+    const before = samples.filter(s => s.ch === ch && s.t < ts && s.t > ts - 120);
+    const pre = before.length ? before[before.length - 1] : null;
+    const restV = pre ? pre.mV / 1000 : null;
+    const seg = samples.filter(s => s.ch === ch && s.t >= ts && s.t <= ts + r.N + 0.5).map(s => ({
+      x: s.t - ts, y: s.mV / 1000,
+      i: isNum(s.mA) ? s.mA / 1000 : null,
+      ir: s.ir, cap: s.cap, tc: tempOf(s)
+    }));
+    if (seg.length < 2) { run.cells[ch] = { name, n: seg.length }; continue; }
+    let energy = 0, energyM = 0;
+    for (let k = 1; k < seg.length; k++) {
+      const dt = seg[k].x - seg[k - 1].x;
+      energy += (seg[k].y + seg[k - 1].y) / 2 * dt;
+      if (seg[k].i !== null && seg[k - 1].i !== null) {
+        energyM += (seg[k].y * seg[k].i + seg[k - 1].y * seg[k - 1].i) / 2 * dt;
+      }
+    }
+    energy = energy * r.I / 3600;
+    const hasI = seg.some(p => p.i !== null && p.i > 0);
+    energyM = hasI ? energyM / 3600 : null;                       // energia con la corrente misurata (Wh)
+    const Imeas = hasI ? avg(seg.filter(p => p.i !== null && p.i > 0).map(p => p.i)) : null;
+    const capStart = pre && isNum(pre.cap) ? pre.cap : (seg.find(p => isNum(p.cap)) || {}).cap;
+    const capEnd = [...seg].reverse().find(p => isNum(p.cap));
+    const capGara = isNum(capStart) && capEnd ? counterDelta(capStart, capEnd.cap) : null;  // mAh erogati in gara
+    const v2 = avg(seg.filter(p => p.x >= 1.5 && p.x <= 2.5).map(p => p.y)) ?? seg[0].y;
+    const vend = avg(seg.filter(p => p.x >= r.N - 1).map(p => p.y)) ?? seg[seg.length - 1].y;
+    const Vdrop = restV !== null ? (restV - v2) * 1000 : null;                              // caduta iniziale (mV)
+    const irVals = seg.filter(p => isNum(p.ir) && p.ir > 0).map(p => p.ir);
+    const IRch = irVals.length ? avg(irVals) : null;                                       // misura del caricabatterie
+    const rintStima = restV !== null && r.I ? (restV - v2) / r.I * 1000 : null;
+    const Rint = IRch !== null ? IRch : rintStima;
+    const tcs = seg.map(p => p.tc).filter(v => v !== null);
+    const step = Math.max(1, Math.floor(seg.length / 220));
+    run.cells[ch] = {
+      name, n: seg.length,
+      Vmean: avg(seg.map(p => p.y)), Vend: vend, Vrest: restV, Vdrop,
+      Energy: energy, EnergyM: energyM, Imeas, capGara,
+      Rint, IRch,
+      Tstart: tcs.length ? tcs[0] : null,
+      dT: tcs.length >= 2 ? tcs[tcs.length - 1] - tcs[0] : null,
+      curve: seg.filter((_, k) => k % step === 0).map(p => [p.x, p.y])
+    };
+  }
+  return run;
+}
+
+// somiglianza di una coppia su più misure; ogni misura disponibile pesa allo stesso modo
+function pairScore(c1, c2) {
+  const parts = {};
+  const both = (a, b) => isNum(a) && isNum(b);
+  const put = (k, a, b) => { if (both(a, b)) parts[k] = simPct(a, b); };
+  put('Capacità', c1.capGara, c2.capGara);
+  if (both(c1.EnergyM, c2.EnergyM)) put('Energia', c1.EnergyM, c2.EnergyM);
+  else put('Energia', c1.Energy, c2.Energy);
+  put('Resistenza', c1.Rint, c2.Rint);
+  if (both(c1.Vdrop, c2.Vdrop)) {
+    parts['Caduta'] = (Math.abs(c1.Vdrop) < 5 && Math.abs(c2.Vdrop) < 5)
+      ? 100 : simPct(Math.abs(c1.Vdrop), Math.abs(c2.Vdrop));
+  }
+  put('Tensione media', c1.Vmean, c2.Vmean);
+  const vals = Object.values(parts);
+  return { sim: vals.length ? avg(vals) : null, parts };
+}
+
+function similarity(c1, c2) { return pairScore(c1, c2).sim; }
+
+function pairDetail(c1, c2) {
+  const sc = pairScore(c1, c2);
+  return {
+    sim: sc.sim, parts: sc.parts,
+    dV: Math.abs(c1.Vmean - c2.Vmean) * 1000,
+    dE: Math.abs(c1.Energy - c2.Energy) / ((c1.Energy + c2.Energy) / 2) * 100,
+    dR: (isNum(c1.Rint) && isNum(c2.Rint)) ? Math.abs(c1.Rint - c2.Rint) : null,
+    dCap: (isNum(c1.capGara) && isNum(c2.capGara)) ? Math.abs(c1.capGara - c2.capGara) : null,
+    dDrop: (isNum(c1.Vdrop) && isNum(c2.Vdrop)) ? Math.abs(c1.Vdrop - c2.Vdrop) : null,
+    dRest: (isNum(c1.Vrest) && isNum(c2.Vrest)) ? Math.abs(c1.Vrest - c2.Vrest) * 1000 : null
+  };
+}
+
+function cellSeries(name) {
+  const pts = [];
+  for (const run of races.slice().reverse()) for (const ch of CHANNELS) {
+    const c = run.cells[ch];
+    if (c && c.curve && c.name === name) {
+      pts.push({ date: run.date, E: c.Energy * 1000, V: c.Vmean, R: c.Rint, IR: c.IRch,
+                 cap: c.capGara, drop: c.Vdrop, dT: c.dT });
+    }
+  }
+  return pts;
+}
+
+function cellRow(name) {
+  const runs = cellSeries(name);
+  const caps = loadCap()[name] || [];
+  const mean = arr => { const v = arr.filter(isNum); return v.length ? v.reduce((s, x) => s + x, 0) / v.length : null; };
+  const cvOf = arr => {
+    const v = arr.filter(isNum);
+    if (v.length < 2) return null;
+    const m = v.reduce((s, x) => s + x, 0) / v.length;
+    if (!m) return null;
+    const sd = Math.sqrt(v.reduce((s, x) => s + (x - m) * (x - m), 0) / (v.length - 1));
+    return sd / Math.abs(m) * 100;
+  };
+  const E = runs.map(p => p.E / 1000);
+  const C = runs.map(p => p.cap);
+  const R = runs.map(p => (isNum(p.IR) ? p.IR : p.R));
+  return {
+    name, n: runs.length,
+    Energy: mean(E), Vmean: mean(runs.map(p => p.V)),
+    Rint: mean(R), Vdrop: mean(runs.map(p => p.drop)),
+    capGara: mean(C),
+    cv: cvOf(E), cvCap: cvOf(C),
+    cap: caps.length ? caps[caps.length - 1].mAh : null
+  };
+}
+
+function scoreCells(rows) {
+  const metrics = [
+    { key: 'capGara', w: 0.25, high: true },
+    { key: 'Energy', w: 0.20, high: true },
+    { key: 'Rint', w: 0.20, high: false },
+    { key: 'Vdrop', w: 0.10, high: false, abs: true },
+    { key: 'Vmean', w: 0.05, high: true },
+    { key: 'cvCap', w: 0.10, high: false },
+    { key: 'cv', w: 0.10, high: false }
+  ];
+  const val = (r, m) => { const v = r[m.key]; return isNum(v) ? (m.abs ? Math.abs(v) : v) : null; };
+  const active = rows.filter(r => r.n > 0);
+  for (const r of rows) r.score = null;
+  for (const m of metrics) {
+    const vals = active.map(r => val(r, m)).filter(v => v !== null);
+    if (vals.length < 2) continue;
+    const lo = Math.min(...vals), hi = Math.max(...vals);
+    for (const r of active) {
+      const v = val(r, m);
+      if (v === null) continue;
+      let norm = hi === lo ? 1 : (v - lo) / (hi - lo);
+      if (!m.high) norm = 1 - norm;
+      r['_' + m.key] = norm;
+    }
+  }
+  for (const r of active) {
+    let num = 0, den = 0;
+    for (const m of metrics) {
+      const nv = r['_' + m.key];
+      if (nv !== undefined) { num += m.w * nv; den += m.w; }
+    }
+    r.score = den ? Math.round(100 * num / den) : null;
+  }
+  return rows;
+}
+
+function renderRaceTable(run) {
+  if (!run) { $('raceTable').innerHTML = '<p class="hint">Nessuna gara ancora.</p>'; return; }
+  let html = '<div class="group" style="margin:0"><table class="tbl"><tr><th>Pila</th><th>Capacità</th><th>Energia</th><th>V media</th><th>Caduta</th><th>R carica</th><th>ΔT</th></tr>';
+  for (const ch of CHANNELS) {
+    const c = run.cells[ch];
+    if (!c) continue;
+    if (!c.curve) {
+      html += '<tr><td style="color:' + COLORS[ch] + '">' + esc(c.name) + '</td><td colspan="6" class="dim">dati insufficienti</td></tr>';
+      continue;
+    }
+    html += '<tr><td style="color:' + COLORS[ch] + '">' + esc(c.name) + '</td><td>' + unitStr(c.capGara, 0, ' mAh') +
+            '</td><td>' + unitStr(c.Energy * 1000, 1, ' mWh') + '</td><td>' + unitStr(c.Vmean, 3, ' V') +
+            '</td><td>' + unitStr(c.Vdrop, 0, ' mV') + '</td><td>' + unitStr(c.IRch !== undefined ? c.IRch : c.Rint, 0, ' mΩ') +
+            '</td><td>' + unitStr(c.dT, 1, ' °C') + '</td></tr>';
+  }
+  html += '</table></div>';
+  $('raceTable').innerHTML = html;
+}
+
+function renderRaceSim(run) {
+  if (!run) { $('raceSim').innerHTML = ''; return; }
+  const ok = CHANNELS.filter(ch => run.cells[ch] && run.cells[ch].curve);
+  if (ok.length < 2) { $('raceSim').innerHTML = '<p class="hint">Servono almeno due pile per il confronto.</p>'; return; }
+  const pairs = [];
+  for (let i = 0; i < ok.length; i++) for (let j = i + 1; j < ok.length; j++) {
+    const a = run.cells[ok[i]], b = run.cells[ok[j]];
+    pairs.push(Object.assign({ a: a.name, b: b.name }, pairDetail(a, b)));
+  }
+  pairs.sort((x, y) => (y.sim ?? 0) - (x.sim ?? 0));
+  let html = '<div class="group" style="margin:0"><table class="tbl"><tr><th>Coppia</th><th>Somiglianza</th><th>Δ Capacità</th><th>Δ Energia</th><th>Δ R</th><th>Δ Caduta</th><th>Δ Riposo</th></tr>';
+  pairs.forEach((p, i) => {
+    const warn = isNum(p.dRest) && p.dRest > 5 ? ' class="warnc"' : '';
+    html += '<tr' + (i === 0 ? ' class="best"' : '') + '><td>' + esc(p.a) + ' · ' + esc(p.b) + '</td><td><b>' + unitStr(p.sim, 1, '%') +
+            '</b></td><td>' + unitStr(p.dCap, 0, ' mAh') + '</td><td>' + unitStr(p.dE, 1, '%') + '</td><td>' + unitStr(p.dR, 1, ' mΩ') +
+            '</td><td>' + unitStr(p.dDrop, 0, ' mV') + '</td><td' + warn + '>' + unitStr(p.dRest, 0, ' mV') + '</td></tr>';
+  });
+  html += '</table></div>';
+  const best = pairs[0];
+  html += '<p class="hint">Coppia consigliata: <b>' + esc(best.a) + ' + ' + esc(best.b) + '</b> (' + unitStr(best.sim, 1, '%') + ')</p>';
+  if (isNum(best.dRest) && best.dRest > 5) {
+    html += '<p class="hint warnc">Attenzione: la tensione a riposo differisce di ' + fmt(best.dRest, 0) + ' mV. Prima della gara conviene riportarle allo stesso stato.</p>';
+  }
+  $('raceSim').innerHTML = html;
+}
+
+function renderCellBoard() {
+  const box = $('cellBoard');
+  if (!box) return;
+  const names = allCellNames();
+  if (!names.length) {
+    box.innerHTML = '<p class="hint">Dopo la prima gara compariranno qui le pile con il loro punteggio.</p>';
+    return;
+  }
+  const rows = scoreCells(names.map(cellRow));
+  const ranked = rows.filter(r => r.score !== null).sort((a, b) => b.score - a.score);
+  const rest = rows.filter(r => r.score === null);
+  let html = '<div class="group" style="margin:0"><table class="tbl"><tr><th>Pila</th><th>Gare</th><th>Capacità</th><th>Energia</th><th>R int.</th><th>Caduta</th><th>Ripetib.</th><th>Punteggio</th></tr>';
+  for (const r of ranked.concat(rest)) {
+    const cls = r === ranked[0] ? ' class="best"' : '';
+    const rip = isNum(r.cvCap) ? r.cvCap : r.cv;
+    html += '<tr' + cls + '><td>' + esc(r.name) + '</td><td>' + r.n + '</td><td>' + unitStr(r.capGara, 0, ' mAh') +
+            '</td><td>' + unitStr(r.Energy * 1000, 1, ' mWh') + '</td><td>' + unitStr(r.Rint, 1, ' mΩ') +
+            '</td><td>' + unitStr(r.Vdrop, 0, ' mV') + '</td><td>' + unitStr(rip, 1, '%') + '</td><td>' +
+            (r.score === null ? '—' : r.score + '/100') + '</td></tr>';
+  }
+  html += '</table></div>';
+  if (ranked.length >= 2) {
+    html += '<p class="hint">Migliori per punteggio: <b>' + esc(ranked[0].name) + '</b> e <b>' + esc(ranked[1].name) +
+            '</b>. Ripetib. = variazione tra le gare: più è bassa, più la pila è regolare.</p>';
+  } else {
+    html += '<p class="hint">Il punteggio confronta almeno due pile. La ripetibilità richiede almeno due gare per pila.</p>';
+  }
+  box.innerHTML = html;
+}
+
+
 function raceStart() {
   if (raceReasons().length) return;
   const q = raceParams();
@@ -908,6 +1180,10 @@ function raceStart() {
     inTimeProtect: q.inTimeProtect
   });
   saveNames();
+  const restMv = chans.map(ch => latest[ch] ? latest[ch].mV : null).filter(v => v !== null);
+  if (restMv.length >= 2 && Math.max(...restMv) - Math.min(...restMv) > 5) {
+    addLog('Attenzione: tensione a riposo diversa di ' + (Math.max(...restMv) - Math.min(...restMv)) + ' mV tra le uscite selezionate');
+  }
   race = { N, chans, I: rp.dischargeE / 1000, tStart: {}, names: {}, stopped: 0, running: true, pollIdx: 0 };
   race.startMs = Date.now();
   race.lastBeep = null;
@@ -966,38 +1242,6 @@ function raceFinish() {
 // --- calcoli ---
 function avg(a) { return a.length ? a.reduce((s, x) => s + x, 0) / a.length : null; }
 
-function computeRun(r) {
-  const run = { id: Date.now(), date: new Date().toLocaleString('it-IT'), N: r.N, I: r.I, cells: {} };
-  for (const ch of r.chans) {
-    const ts = r.tStart[ch];
-    const name = r.names[ch];
-    if (ts === undefined) { run.cells[ch] = { name, n: 0 }; continue; }
-    const rest = samples.filter(s => s.ch === ch && s.t < ts && s.t > ts - 120);
-    const restV = rest.length ? rest[rest.length - 1].mV / 1000 : null;
-    const seg = samples.filter(s => s.ch === ch && s.t >= ts && s.t <= ts + r.N + 0.5)
-                       .map(s => ({ x: s.t - ts, y: s.mV / 1000, tc: s.tempC }));
-    if (seg.length < 2) { run.cells[ch] = { name, n: seg.length }; continue; }
-    let energy = 0;
-    for (let i = 1; i < seg.length; i++) energy += (seg[i].y + seg[i - 1].y) / 2 * (seg[i].x - seg[i - 1].x);
-    energy = energy * r.I / 3600;
-    const v2 = avg(seg.filter(s => s.x >= 1.5 && s.x <= 2.5).map(s => s.y)) ?? seg[0].y;
-    const vend = avg(seg.filter(s => s.x >= r.N - 1).map(s => s.y)) ?? seg[seg.length - 1].y;
-    const rint = restV !== null ? (restV - v2) / r.I * 1000 : null;
-    const step = Math.max(1, Math.floor(seg.length / 220));
-    run.cells[ch] = {
-      name, n: seg.length,
-      Vmean: avg(seg.map(s => s.y)),
-      Vend: vend,
-      Energy: energy,
-      Rint: rint,
-      Tstart: seg[0].tc,
-      Tend: seg[seg.length - 1].tc,
-      dT: seg[seg.length - 1].tc - seg[0].tc,
-      curve: seg.filter((_, i) => i % step === 0).map(s => [s.x, s.y])
-    };
-  }
-  return run;
-}
 
 function simPct(a, b) {
   const m = (a + b) / 2;
@@ -1006,20 +1250,7 @@ function simPct(a, b) {
 }
 
 // somiglianza: media delle somiglianze su tensione media, energia e resistenza interna
-function similarity(c1, c2) {
-  const parts = [simPct(c1.Vmean, c2.Vmean), simPct(c1.Energy, c2.Energy)];
-  if (c1.Rint !== null && c2.Rint !== null && c1.Rint !== undefined && c2.Rint !== undefined) parts.push(simPct(c1.Rint, c2.Rint));
-  return avg(parts);
-}
 
-function pairDetail(c1, c2) {
-  return {
-    sim: similarity(c1, c2),
-    dV: Math.abs(c1.Vmean - c2.Vmean) * 1000,
-    dE: Math.abs(c1.Energy - c2.Energy) / ((c1.Energy + c2.Energy) / 2) * 100,
-    dR: (c1.Rint !== null && c2.Rint !== null) ? Math.abs(c1.Rint - c2.Rint) : null
-  };
-}
 
 function fmt(x, d) { return x === null || x === undefined || !isFinite(x) ? '—' : x.toFixed(d).replace('.', ','); }
 
@@ -1055,39 +1286,7 @@ function drawRaceChart(run) {
   }
 }
 
-function renderRaceTable(run) {
-  if (!run) { $('raceTable').innerHTML = '<p class="hint">Nessuna gara ancora.</p>'; return; }
-  let html = '<div class="group" style="margin:0"><table class="tbl"><tr><th>Pila</th><th>Energia</th><th>V media</th><th>V fine</th><th>R int.</th><th>ΔT</th></tr>';
-  for (const ch of CHANNELS) {
-    const c = run.cells[ch];
-    if (!c) continue;
-    if (!c.curve) { html += '<tr><td style="color:' + COLORS[ch] + '">' + c.name + '</td><td colspan="5" class="dim">dati insufficienti</td></tr>'; continue; }
-    html += '<tr><td style="color:' + COLORS[ch] + '">' + c.name + '</td><td>' + fmt(c.Energy * 1000, 1) + ' mWh</td><td>' +
-            fmt(c.Vmean, 3) + ' V</td><td>' + fmt(c.Vend, 3) + ' V</td><td>' + fmt(c.Rint, 1) + ' mΩ</td><td>' + fmt(c.dT, 1) + ' °C</td></tr>';
-  }
-  html += '</table></div>';
-  $('raceTable').innerHTML = html;
-}
 
-function renderRaceSim(run) {
-  if (!run) { $('raceSim').innerHTML = ''; return; }
-  const ok = CHANNELS.filter(ch => run.cells[ch] && run.cells[ch].curve);
-  if (ok.length < 2) { $('raceSim').innerHTML = '<p class="hint">Servono almeno due pile per il confronto.</p>'; return; }
-  const pairs = [];
-  for (let i = 0; i < ok.length; i++) for (let j = i + 1; j < ok.length; j++) {
-    const a = run.cells[ok[i]], b = run.cells[ok[j]];
-    pairs.push({ a: a.name, b: b.name, ...pairDetail(a, b) });
-  }
-  pairs.sort((x, y) => y.sim - x.sim);
-  let html = '<div class="group" style="margin:0"><table class="tbl"><tr><th>Coppia</th><th>Somiglianza</th><th>ΔV</th><th>ΔEnergia</th><th>ΔR</th></tr>';
-  for (const p of pairs) {
-    html += '<tr><td>' + p.a + ' · ' + p.b + '</td><td><b>' + fmt(p.sim, 1) + '%</b></td><td>' + fmt(p.dV, 1) + ' mV</td><td>' +
-            fmt(p.dE, 1) + '%</td><td>' + (p.dR === null ? '—' : fmt(p.dR, 1) + ' mΩ') + '</td></tr>';
-  }
-  html += '</table></div>';
-  html += '<p class="hint">Coppia consigliata: <b>' + pairs[0].a + ' + ' + pairs[0].b + '</b> (somiglianza ' + fmt(pairs[0].sim, 1) + '%)</p>';
-  $('raceSim').innerHTML = html;
-}
 
 function renderRaceHistory() {
   if (!races.length) { $('raceHistory').innerHTML = '<p class="hint">Lo storico delle gare è vuoto.</p>'; return; }
@@ -1161,7 +1360,7 @@ updateRaceButton();
 
 document.querySelectorAll('.modes button[data-mode]').forEach(b => b.addEventListener('click', () => setMode(Number(b.dataset.mode))));
 /* ===================== AVVISI ===================== */
-const ALARM_KEY = 'nc3000_alarm_v1';
+const ALARM_KEY = 'nc3000_alarm_v2';
 const CAP_KEY = 'nc3000_capacity_v1';
 let audioCtx = null;
 let alarmLast = {};
@@ -1226,7 +1425,7 @@ function showAlarm(msg) {
 
 // controlla ogni lettura: temperatura sempre, tensione minima solo durante la gara
 function checkAlarms(s) {
-  const tLimit = Number($('a_temp').value);
+  const rLimit = Number($('a_temp').value);
   const vLimit = Number($('a_vmin').value);
   const now = Date.now();
   const cool = key => {
@@ -1234,8 +1433,8 @@ function checkAlarms(s) {
     alarmLast[key] = now;
     return true;
   };
-  if (tLimit > 0 && s.tempC >= tLimit && cool('T' + s.ch)) {
-    showAlarm('CH' + s.ch + ': temperatura ' + s.tempC + ' °C (limite ' + tLimit + ' °C)');
+  if (rLimit > 0 && s.ir >= rLimit && cool('R' + s.ch)) {
+    showAlarm('CH' + s.ch + ': resistenza interna ' + s.ir + ' mΩ (limite ' + rLimit + ' mΩ)');
   }
   if (race && race.tStart && race.tStart[s.ch] !== undefined && vLimit > 0) {
     const ts = race.tStart[s.ch];
@@ -1294,14 +1493,6 @@ function allCellNames() {
   return [...set].sort();
 }
 
-function cellSeries(name) {
-  const pts = [];
-  for (const run of races.slice().reverse()) for (const ch of CHANNELS) {
-    const c = run.cells[ch];
-    if (c && c.curve && c.name === name) pts.push({ date: run.date, E: c.Energy * 1000, V: c.Vmean, R: c.Rint });
-  }
-  return pts;
-}
 
 function summarizeCell(name) {
   const pts = cellSeries(name);
@@ -1404,10 +1595,10 @@ function buildRaceReportHtml(run) {
   const ranking = cells.slice().sort((a, b) => b.Energy - a.Energy);
   let body = '<h1>Report gara</h1><p class="meta">' + esc(run.date) + ' · durata ' + run.N + ' s · scarica ' +
              fmt(run.I, 2) + ' A</p>';
-  body += '<h2>Risultati</h2><table><tr><th>Pila</th><th>Energia</th><th>V media</th><th>V fine</th><th>R interna</th><th>ΔT</th></tr>';
+  body += '<h2>Risultati</h2><table><tr><th>Pila</th><th>Energia</th><th>V media</th><th>V fine</th><th>R interna</th></tr>';
   for (const c of cells) {
     body += '<tr><td>' + esc(c.name) + '</td><td>' + fmt(c.Energy * 1000, 1) + ' mWh</td><td>' + fmt(c.Vmean, 3) +
-            ' V</td><td>' + fmt(c.Vend, 3) + ' V</td><td>' + fmt(c.Rint, 1) + ' mΩ</td><td>' + fmt(c.dT, 1) + ' °C</td></tr>';
+            ' V</td><td>' + fmt(c.Vend, 3) + ' V</td><td>' + fmt(c.Rint, 1) + ' mΩ</td></tr>';
   }
   body += '</table>';
   body += '<h2>Classifica per energia</h2><table><tr><th>#</th><th>Pila</th><th>Energia</th></tr>';
@@ -1451,7 +1642,7 @@ function buildRaceReportHtml(run) {
     body += '<p class="note">Legenda: ' + cells.map((c, k) => '<span style="color:' + ['#30d158', '#64d2ff', '#bf5af2', '#ff453a'][k % 4] + '">' + esc(c.name) + '</span>').join(' · ') + '</p>';
   }
   body += '<p class="note">Energia = integrale della tensione nel tempo di gara × corrente di scarica impostata (non misurata). ' +
-          'R interna = (tensione a riposo − tensione a 2 s) / corrente: stima indicativa. ' +
+          'R interna = misurata dal caricabatterie (media durante la gara). ' +
           'Somiglianza = media, su tensione media, energia e resistenza, di 100% meno lo scarto relativo tra due pile.</p>';
   return htmlWrap('Report gara ' + run.date, body);
 }
@@ -1537,34 +1728,9 @@ function slopeOf(xs, ys) {
 }
 
 // finestra di 12 s: corrente dalla pendenza del contatore (0,5 mAh per unità), fase dalla tensione
-function estimateChannel(ch) {
-  const last = latest[ch];
-  if (!last) return null;
-  const tEnd = last.t;
-  const pts = [];
-  for (let i = samples.length - 1; i >= 0 && pts.length < 400; i--) {
-    const s = samples[i];
-    if (s.t < tEnd - 30) break;
-    if (s.ch === ch) pts.push(s);
-  }
-  pts.reverse();
-  // se il contatore è tornato indietro (reset), si usano solo i campioni dopo il reset
-  let start = 0;
-  for (let i = 1; i < pts.length; i++) {
-    if (pts[i].raw1011 < pts[i - 1].raw1011) start = i;
-  }
-  const win = pts.slice(start);
-  if (win.length < 5) return { phase: 'in attesa di dati', mA: null };
-  const ts = win.map(p => p.t);
-  const vSlope = slopeOf(ts, win.map(p => p.mV));           // mV al secondo, su 30 s
-  const mA = slopeOf(ts, win.map(p => p.raw1011)) * 1800;   // mA = pendenza × 0,5 mAh × 3600
-  if (Math.abs(mA) > 2500) return { phase: 'in attesa di dati', mA: null }; // valore non plausibile
-  // la tensione che scende è il criterio principale: il contatore non distingue la scarica dalla carica
-  if (vSlope < -0.1) return { phase: 'scarica', mA: null };
-  if (mA > 20) return { phase: 'in carica', mA: Math.round(mA) };
-  return { phase: 'a riposo', mA: 0 };
-}
 
+const STATO_LABEL = { 2: 'in carica', 3: 'in scarica', 4: 'a riposo', 5: 'completato', 6: 'completato' };
+const MODE_LABEL = { 0: 'Carica', 1: 'Scarica', 2: 'Attivazione', 3: 'Ciclo', 4: 'MaxBoost', 5: 'Turbo' };
 function renderLatest() {
   const box = $('latest');
   box.innerHTML = CHANNELS.map(ch => {
@@ -1573,96 +1739,27 @@ function renderLatest() {
       return '<div class="card idle"><div class="cardhead"><span class="ch" style="color:' + COLORS[ch] + '">CH' + ch +
              '</span><span class="badge">in attesa</span></div><div class="v">—</div></div>';
     }
-    const est = estimateChannel(ch);
-    const fase = est.mA !== null && est.mA > 0 ? est.phase + ' · ' + est.mA + ' mA' : est.phase;
-    return '<div class="card on"><div class="cardhead"><span class="ch" style="color:' + COLORS[ch] + '">CH' + ch + '</span></div>' +
+    const stato = STATO_LABEL[s.stato] || ('stato ' + s.stato);
+    const modo = MODE_LABEL[s.modo] || ('modo ' + s.modo);
+    const corrente = (s.mA / 1000).toFixed(2) + ' A';
+    const err = s.err ? '<span class="badge err">errore ' + s.err + '</span>' : '';
+    const rColor = s.ir > 40 ? 'var(--danger)' : 'var(--accent)';
+    const rBadge = '<span class="badge rint" style="color:' + rColor + '">R ' + s.ir + ' mΩ</span>';
+    return '<div class="card on"><div class="cardhead"><span class="ch" style="color:' + COLORS[ch] + '">CH' + ch + '</span><span class="hright">' + rBadge + err + '</span></div>' +
            '<div class="v">' + (s.mV / 1000).toFixed(3) + '<small> V</small></div>' +
-           '<div class="metrics"><div><b>' + s.tempC + '</b><small>°C</small></div>' +
-           '<div><b>' + (s.raw1011 * 0.5).toFixed(1) + '</b><small>mAh*</small></div></div>' +
-           '<div class="sub">' + fase + '</div></div>';
+           '<div class="metrics">' +
+           '<div><b>' + corrente + '</b><small>corrente</small></div>' +
+           '<div><b>' + s.cap + '</b><small>capacità mAh</small></div>' +
+           '<div><b>' + (s.dV ? s.dV : '—') + '</b><small>temperatura</small></div>' +
+           '</div>' +
+           '<div class="sub">' + stato + ' · ' + modo + '</div></div>';
   }).join('');
 }
 
 /* ===================== SCHEDA PILE E PUNTEGGIO ===================== */
-function cellRow(name) {
-  const pts = cellSeries(name);
-  const caps = loadCap()[name] || [];
-  const mean = arr => arr.length ? arr.reduce((s, x) => s + x, 0) / arr.length : null;
-  const E = pts.map(p => p.E / 1000);
-  const mE = mean(E);
-  let cv = null;
-  if (E.length >= 2 && mE > 0) {
-    const sd = Math.sqrt(E.reduce((s, x) => s + (x - mE) * (x - mE), 0) / (E.length - 1));
-    cv = sd / mE * 100;
-  }
-  const R = pts.filter(p => p.R !== null && p.R !== undefined).map(p => p.R);
-  return {
-    name, n: pts.length, Energy: mE, Vmean: mean(pts.map(p => p.V)), Rint: mean(R), cv,
-    cap: caps.length ? caps[caps.length - 1].mAh : null
-  };
-}
 
 // punteggio relativo tra le pile confrontate: 100 = migliore su tutti i criteri
-function scoreCells(rows) {
-  const metrics = [
-    { key: 'Energy', w: 0.35, high: true },
-    { key: 'Rint', w: 0.25, high: false },
-    { key: 'Vmean', w: 0.15, high: true },
-    { key: 'cv', w: 0.25, high: false }
-  ];
-  const active = rows.filter(r => r.n > 0);
-  for (const r of rows) r.score = null;
-  for (const m of metrics) {
-    const vals = active.map(r => r[m.key]).filter(v => v !== null && v !== undefined && isFinite(v));
-    if (vals.length < 2) continue;
-    const lo = Math.min(...vals), hi = Math.max(...vals);
-    for (const r of active) {
-      const v = r[m.key];
-      if (v === null || v === undefined || !isFinite(v)) continue;
-      let norm = hi === lo ? 1 : (v - lo) / (hi - lo);
-      if (!m.high) norm = 1 - norm;
-      r['_' + m.key] = norm;
-    }
-  }
-  for (const r of active) {
-    let num = 0, den = 0;
-    for (const m of metrics) {
-      const nv = r['_' + m.key];
-      if (nv !== undefined) { num += m.w * nv; den += m.w; }
-    }
-    r.score = den ? Math.round(100 * num / den) : null;
-  }
-  return rows;
-}
 
-function renderCellBoard() {
-  const box = $('cellBoard');
-  if (!box) return;
-  const names = allCellNames();
-  if (!names.length) {
-    box.innerHTML = '<p class="hint">Dopo la prima gara compariranno qui le pile con il loro punteggio.</p>';
-    return;
-  }
-  const rows = scoreCells(names.map(cellRow));
-  const ranked = rows.filter(r => r.score !== null).sort((a, b) => b.score - a.score);
-  const rest = rows.filter(r => r.score === null);
-  const f = (x, d, u) => (x === null || x === undefined || !isFinite(x)) ? '—' : x.toFixed(d).replace('.', ',') + u;
-  let html = '<div class="group" style="margin:0"><table class="tbl"><tr><th>Pila</th><th>Gare</th><th>Energia</th><th>R int.</th><th>V media</th><th>Costanza</th><th>Punteggio</th></tr>';
-  for (const r of ranked.concat(rest)) {
-    const cls = r === ranked[0] ? ' class="best"' : '';
-    html += '<tr' + cls + '><td>' + esc(r.name) + '</td><td>' + r.n + '</td><td>' + f(r.Energy * 1000, 1, ' mWh') +
-            '</td><td>' + f(r.Rint, 1, ' mΩ') + '</td><td>' + f(r.Vmean, 3, ' V') + '</td><td>' + f(r.cv, 1, '%') +
-            '</td><td>' + (r.score === null ? '—' : r.score + '/100') + '</td></tr>';
-  }
-  html += '</table></div>';
-  if (ranked.length >= 2) {
-    html += '<p class="hint">Migliori per punteggio: <b>' + esc(ranked[0].name) + '</b> e <b>' + esc(ranked[1].name) +
-            '</b>. Costanza = variazione dell\'energia tra le gare: più è bassa, più la pila è regolare.</p>';
-  } else {
-    html += '<p class="hint">Il punteggio confronta almeno due pile. La costanza richiede almeno due gare per pila.</p>';
-  }
-  box.innerHTML = html;
-}
 
 /* ===================== BACKUP ===================== */
 function readJSON(k, def) {
