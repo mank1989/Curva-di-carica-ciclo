@@ -241,20 +241,18 @@
 
     <div class="sec"><h2>Avvio</h2><span>richiede conferma</span></div>
     <div class="panel confirm">
-      <label>Scrivi AVVIA per confermare
-        <input type="text" id="confirmStart" autocomplete="off"></label>
-      <label class="chk"><input type="checkbox" id="chkStart"> Ho verificato che il canale ha la pila giusta e i valori corrispondono</label>
+      <label class="chk"><input type="checkbox" id="chkStart"> Confermo di voler avviare questo programma sul canale selezionato</label>
       <div class="actions"><button id="btnStart" class="danger" disabled>Avvia programma</button></div>
+      <p id="startHint" class="note"></p>
     </div>
 
     <div class="sec"><h2>Stop</h2><span>arresto immediato</span></div>
-    <div class="panel confirm">
-      <label>Scrivi FERMA per confermare
-        <input type="text" id="confirmStop" autocomplete="off"></label>
+    <div class="panel">
       <div class="actions">
         <button id="btnStopCh" class="danger" disabled>Ferma canale selezionato</button>
         <button id="btnStopAll" class="danger" disabled>Ferma tutti i canali</button>
       </div>
+      <p id="stopHint" class="note"></p>
     </div>
   </section>
 
@@ -635,13 +633,33 @@ function renderPreview() {
   updateStartButton();
 }
 
+function confirmText(id) {
+  return ($(id).value || '').trim().toUpperCase();
+}
+
+function startReasons() {
+  const why = [];
+  if (!char) why.push('Connetti prima il caricabatterie');
+  if (previewedKey === null) why.push('Genera l\'anteprima dopo aver impostato i valori');
+  else if (previewedKey !== JSON.stringify(readParams())) why.push('I valori sono cambiati: rigenera l\'anteprima');
+  if (!$('chkStart').checked) why.push('Spunta la casella di verifica');
+  return why;
+}
+
+function stopReasons() {  // lo stop è immediato: basta essere connessi
+  const why = [];
+  if (!char) why.push('Connetti prima il caricabatterie');
+  return why;
+}
+
 function updateStartButton() {
-  const p = readParams();
-  const ok = previewedKey !== null && previewedKey === JSON.stringify(p) &&
-             $('confirmStart').value === 'AVVIA' && $('chkStart').checked && char !== null;
-  $('btnStart').disabled = !ok;
-  $('btnStopCh').disabled = !(char && $('confirmStop').value === 'FERMA');
-  $('btnStopAll').disabled = !(char && $('confirmStop').value === 'FERMA');
+  const sr = startReasons();
+  const tr = stopReasons();
+  $('btnStart').disabled = sr.length > 0;
+  $('btnStopCh').disabled = tr.length > 0;
+  $('btnStopAll').disabled = tr.length > 0;
+  $('startHint').textContent = sr.length ? 'Per avviare: ' + sr.join(' · ') : 'Pronto all\'avvio';
+  $('stopHint').textContent = tr.length ? 'Per fermare: ' + tr.join(' · ') : 'Stop immediato sul canale selezionato o su tutti';
 }
 
 function startProgram() {
@@ -650,7 +668,7 @@ function startProgram() {
   const blob = buildSettings(p);
   enqueue(CMD_START, Array.from(blob), '0x94 CH' + p.position + ' (programma)');
   addLog('Programma inviato su CH' + p.position + '. Controlla lo schermo del caricabatterie e le letture.');
-  $('confirmStart').value = '';
+  $('startHint').textContent = 'Programma inviato. Controlla lo schermo del caricabatterie.';
   $('chkStart').checked = false;
   updateStartButton();
 }
@@ -699,9 +717,7 @@ $('btnPreview').onclick = () => { saveParams(); renderPreview(); };
 $('btnStart').onclick = startProgram;
 $('btnStopCh').onclick = () => stopChannel(Number($('p_position').value));
 $('btnStopAll').onclick = stopAll;
-$('confirmStart').oninput = updateStartButton;
 $('chkStart').onchange = updateStartButton;
-$('confirmStop').oninput = updateStartButton;
 for (const id of ['p_position','p_capacity','p_chargeE','p_dischargeE','p_inStopVoltage','p_outStopVoltage','p_inStopCurrent','p_outStopCurrent','p_chargeRestTime','p_dischargeRestTime','p_cycleCount','p_cycleMode','p_detalV','p_inTimeProtect','p_tempProtect','p_inMaxbostCapacity','p_track','p_restartVolt','p_truboMode','p_model']) {
   $(id).addEventListener('input', () => { previewedKey = null; updateStartButton(); });
 }
