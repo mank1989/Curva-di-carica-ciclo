@@ -159,14 +159,6 @@
 
   <!-- PROGRAMMA -->
   <section id="tab-program" class="tab">
-    <div class="group" style="margin-top:4px">
-      <h3>Canale</h3>
-      <div class="row">
-        <label>Uscita</label>
-        <div class="val"><select id="p_position"><option value="1">Uscita 1</option><option value="2">Uscita 2</option><option value="3">Uscita 3</option><option value="4">Uscita 4</option></select></div>
-      </div>
-    </div>
-
     <div class="group">
       <h3>Modalità</h3>
       <div class="modes">
@@ -175,6 +167,16 @@
         <button type="button" data-mode="3" class="active">Ciclo</button>
       </div>
     </div>
+
+        <div class="group" style="margin-top:4px">
+      <h3>Canale</h3>
+      <div class="row">
+        <label>Uscita</label>
+        <div class="val"><select id="p_position"><option value="1">Uscita 1</option><option value="2">Uscita 2</option><option value="3">Uscita 3</option><option value="4">Uscita 4</option></select></div>
+      </div>
+    </div>
+
+    
 
     <div class="group">
       <h3>Parametri</h3>
@@ -233,9 +235,14 @@
   <!-- GARA -->
   <section id="tab-race" class="tab">
     <div class="group" style="margin-top:4px">
-      <h3>Gara</h3>
-      <div class="row"><label>Durata</label><div class="val"><input type="number" id="r_seconds" value="22" min="5" max="120" inputmode="numeric"><span class="unit">s</span></div></div>
-      <div class="row"><label>Scarica</label><div class="val"><span class="unit" id="r_current" style="color:var(--orange)">2,50 A</span></div></div>
+      <h3>Parametri di scarica</h3>
+      <div class="row"><label>Modalità</label><div class="val"><span class="unit" style="color:var(--orange)">Scarica</span></div></div>
+      <div class="row"><label>Durata gara</label><div class="val"><input type="number" id="r_seconds" value="22" min="5" max="120" inputmode="numeric"><span class="unit">s</span></div></div>
+      <div class="row"><label>Capacità</label><div class="val"><input type="number" id="r_capacity" value="0" inputmode="numeric"><span class="unit">mAh</span></div></div>
+      <div class="row"><label>Scarica a</label><div class="val"><input type="number" id="r_dischargeE" value="2.50" step="0.05" inputmode="decimal"><span class="unit">A</span></div></div>
+      <div class="row"><label>Corrente di spegnimento</label><div class="val"><input type="number" id="r_outStopCurrent" value="0" step="0.01" inputmode="decimal"><span class="unit">A</span></div></div>
+      <div class="row"><label>Tensione di spegnimento</label><div class="val"><input type="number" id="r_outStopVoltage" value="1.00" step="0.01" inputmode="decimal"><span class="unit">V</span></div></div>
+      <div class="row"><label>Timer di spegnimento</label><div class="val"><input type="number" id="r_inTimeProtect" value="180" inputmode="numeric"><span class="unit">min</span></div></div>
     </div>
 
     <div class="group">
@@ -371,7 +378,7 @@ function validate(p) {
   for (const k of Object.keys(LIMITS)) {
     const [lo, hi] = LIMITS[k];
     const v = p[k];
-    const ok = Number.isFinite(v) && v >= lo && v <= hi && Number.isInteger(v);
+    const ok = (Number.isFinite(v) && v >= lo && v <= hi && Number.isInteger(v)) || (k === 'capacity' && p.model === 1 && v === 0);
     if (!ok) { errs.push(k + ': valore fuori da ' + lo + '–' + hi); bad.push(k); }
   }
   if (p.model !== 1 && p.outStopVoltage >= p.inStopVoltage) { errs.push('fine scarica deve essere sotto la fine carica'); bad.push('outStopVoltage'); }
@@ -757,7 +764,7 @@ function exportCsv() {
 function saveParams() {
   try {
     const o = {};
-    document.querySelectorAll('[id^="p_"]').forEach(el => { o[el.id] = el.value; });
+    document.querySelectorAll('[id^="p_"], [id^="r_"]').forEach(el => { o[el.id] = el.value; });
     localStorage.setItem('nc3000_ui_v2', JSON.stringify(o));
   } catch (e) { /* ignora */ }
 }
@@ -824,13 +831,29 @@ function saveNames() {
   try { localStorage.setItem(NAMES_KEY, JSON.stringify(o)); } catch (e) { /* ignora */ }
 }
 
+function raceParams() {
+  return {
+    seconds: Math.round(Number($('r_seconds').value)),
+    capacity: Math.round(Number($('r_capacity').value)),
+    dischargeE: Math.round(Number($('r_dischargeE').value) * 1000),
+    outStopCurrent: Math.round(Number($('r_outStopCurrent').value) * 1000),
+    outStopVoltage: Math.round(Number($('r_outStopVoltage').value) * 1000),
+    inTimeProtect: Math.round(Number($('r_inTimeProtect').value))
+  };
+}
+
 function raceReasons() {
   const why = [];
   if (!char) why.push('Connetti il caricabatterie');
   if (race) why.push('gara già in corso');
   if (!CHANNELS.some(ch => $('r_ch' + ch).checked)) why.push('seleziona almeno un\'uscita');
-  const n = Math.round(Number($('r_seconds').value));
-  if (!(n >= 5 && n <= 120)) why.push('durata tra 5 e 120 s');
+  const q = raceParams();
+  if (!(q.seconds >= 5 && q.seconds <= 120)) why.push('durata tra 5 e 120 s');
+  if (!(q.dischargeE >= 100 && q.dischargeE <= 2500)) why.push('scarica tra 0,10 e 2,50 A');
+  if (!(q.outStopVoltage >= 900 && q.outStopVoltage <= 1200)) why.push('tensione di spegnimento tra 0,90 e 1,20 V');
+  if (!(q.outStopCurrent >= 0 && q.outStopCurrent <= 2500)) why.push('corrente di spegnimento non valida');
+  if (!(q.capacity === 0 || (q.capacity >= 100 && q.capacity <= 5000))) why.push('capacità 0 (spento) oppure tra 100 e 5000 mAh');
+  if (!(q.inTimeProtect === 0 || (q.inTimeProtect >= 30 && q.inTimeProtect <= 360))) why.push('timer 0 (spento) oppure tra 30 e 360 min');
   if (!$('chkRace').checked) why.push('spunta la conferma');
   return why;
 }
@@ -840,18 +863,21 @@ function updateRaceButton() {
   $('btnRaceStart').disabled = rr.length > 0;
   $('btnRaceAbort').disabled = !race;
   $('raceHint').textContent = rr.length ? 'Per avviare: ' + rr.join(' · ') : 'Pronto';
-  $('r_current').textContent = (Number($('p_dischargeE').value) || 0).toFixed(2).replace('.', ',') + ' A';
 }
 
 function raceStart() {
   if (raceReasons().length) return;
-  const N = Math.round(Number($('r_seconds').value));
+  const q = raceParams();
+  const N = q.seconds;
   const chans = CHANNELS.filter(ch => $('r_ch' + ch).checked);
+  // base dal Programma per i campi che la gara non espone; i parametri di scarica vengono dalla scheda Gara
   const p = readParams();
-  // gara = modalità Scarica; lo stop lo invia la pagina allo scadere
-  const rp = Object.assign({}, p, { model: 1, cycleCount: 1, cycleMode: 0 });
-  const errs = validate(rp).filter(e => !e.startsWith('timer troppo corto') && !e.startsWith('fine scarica'));
-  if (errs.length) { $('raceHint').textContent = 'Correggi i parametri nella scheda Programma'; return; }
+  const rp = Object.assign({}, p, {
+    model: 1, cycleCount: 1, cycleMode: 0,
+    capacity: q.capacity, dischargeE: q.dischargeE,
+    outStopCurrent: q.outStopCurrent, outStopVoltage: q.outStopVoltage,
+    inTimeProtect: q.inTimeProtect
+  });
   saveNames();
   race = { N, chans, I: rp.dischargeE / 1000, tStart: {}, names: {}, stopped: 0, running: true, pollIdx: 0 };
   for (const ch of CHANNELS) race.names[ch] = $('r_name' + ch).value.trim() || ('Uscita ' + ch);
@@ -1090,7 +1116,7 @@ function raceExportCsv() {
 
 $('btnRaceStart').onclick = raceStart;
 $('btnRaceAbort').onclick = raceAbort;
-document.querySelectorAll('[id^="r_"], #chkRace, #p_dischargeE').forEach(el => {
+document.querySelectorAll('[id^="r_"], #chkRace').forEach(el => {
   el.addEventListener('input', () => { saveNames(); updateRaceButton(); });
   el.addEventListener('change', () => { saveNames(); updateRaceButton(); });
 });
