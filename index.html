@@ -2,107 +2,248 @@
 <html lang="it">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>NC3000 · controllo</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0d12">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<title>NC3000 Controllo</title>
 <style>
-  body { font-family: system-ui, sans-serif; margin: 0; padding: 12px; background: #111; color: #eee; }
-  h3 { margin: 8px 0; }
-  h4 { margin: 18px 0 6px; }
-  button { padding: 10px 14px; margin: 4px 6px 4px 0; font-size: 16px; border: 0; border-radius: 8px; background: #1e88e5; color: #fff; }
-  button.warn { background: #c62828; }
-  button:disabled { background: #444; }
-  input, select { font-size: 16px; padding: 6px; background: #222; color: #eee; border: 1px solid #444; border-radius: 6px; }
-  input[type=number] { width: 110px; }
-  input.bad { border-color: #e53935; background: #3a1010; }
-  label { display: inline-block; margin: 4px 10px 4px 0; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 6px 12px; }
-  .note { font-size: 13px; color: #aaa; }
-  .err { color: #ff8a80; font-size: 14px; }
-  .ok { color: #81c784; font-size: 14px; }
-  .box { border: 1px solid #333; border-radius: 8px; padding: 10px; margin: 8px 0; }
-  table { width: 100%; border-collapse: collapse; font-size: 14px; }
-  th, td { text-align: left; padding: 5px 4px; border-bottom: 1px solid #333; }
-  th { color: #aaa; font-weight: normal; font-size: 12px; }
-  canvas { width: 100%; height: 220px; background: #000; border-radius: 6px; display: block; margin-bottom: 8px; }
-  #preview { font-family: monospace; font-size: 12px; white-space: pre-wrap; background: #000; padding: 8px; border-radius: 6px; }
-  #log { font-family: monospace; font-size: 12px; height: 220px; overflow: auto; background: #000; padding: 6px; white-space: pre; border-radius: 6px; }
+  :root {
+    --bg: #0b0d12; --surface: #151a23; --surface2: #1c2330; --line: #262f3f;
+    --text: #e6eaf2; --muted: #8a94a6; --accent: #29b6f6; --ok: #66bb6a;
+    --warn: #ffb74d; --danger: #ef5350; --radius: 16px;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  body { padding-bottom: calc(76px + env(safe-area-inset-bottom)); min-height: 100vh; }
+
+  /* barra superiore */
+  .topbar { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; justify-content: space-between;
+            padding: calc(12px + env(safe-area-inset-top)) 16px 12px; background: rgba(11,13,18,.92); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); }
+  .brand { font-weight: 700; font-size: 18px; letter-spacing: .3px; }
+  .brand span { color: var(--accent); }
+  #status { font-size: 13px; padding: 6px 12px; border-radius: 999px; background: var(--surface2); color: var(--muted); max-width: 62%; text-align: right; }
+
+  main { padding: 14px 14px 20px; max-width: 760px; margin: 0 auto; }
+  .tab { display: none; }
+  .tab.active { display: block; }
+
+  /* card generiche */
+  .card-box { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; margin: 12px 0; }
+  h4 { margin: 18px 4px 8px; font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .8px; }
+  .note { font-size: 13px; color: var(--muted); line-height: 1.45; margin: 6px 2px; }
+  .note b { color: var(--warn); font-weight: 600; }
+
+  /* pulsanti */
+  .actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+  button { font: inherit; font-size: 15px; font-weight: 600; border: 0; border-radius: 12px; padding: 12px 16px; min-height: 44px;
+           background: var(--surface2); color: var(--text); cursor: pointer; transition: transform .05s, opacity .2s; }
+  button:active { transform: scale(.98); }
+  button.primary { background: var(--accent); color: #04121a; }
+  button.danger { background: var(--danger); color: #fff; }
+  button.ghost { background: transparent; border: 1px solid var(--line); }
+  button:disabled { background: var(--surface2); color: #56617a; opacity: .7; cursor: not-allowed; }
+
+  /* statistiche */
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 6px 0 10px; }
+  .stat { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 10px; text-align: center; }
+  .stat b { display: block; font-size: 20px; }
+  .stat small { color: var(--muted); font-size: 12px; }
+
+  /* card canali */
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; position: relative; overflow: hidden; }
+  .card::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--line); }
+  .card.on::before { background: var(--ok); }
+  .cardhead { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+  .ch { font-weight: 800; font-size: 15px; letter-spacing: .4px; }
+  .badge { font-size: 11px; padding: 3px 8px; border-radius: 999px; background: var(--surface2); color: var(--muted); }
+  .badge.chg { background: rgba(102,187,106,.15); color: var(--ok); }
+  .v { font-size: 34px; font-weight: 700; letter-spacing: -.5px; }
+  .v small { font-size: 15px; color: var(--muted); font-weight: 500; margin-left: 2px; }
+  .metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 8px; }
+  .metrics div { background: var(--surface2); border-radius: 10px; padding: 6px 8px; }
+  .metrics b { font-size: 16px; }
+  .metrics small { color: var(--muted); font-size: 11px; display: block; }
+  .sub { font-size: 11px; color: var(--muted); margin-top: 8px; }
+  .card.idle { opacity: .6; }
+
+  /* grafici */
+  canvas { width: 100%; height: 220px; background: #05070a; border-radius: 14px; display: block; border: 1px solid var(--line); }
+
+  /* form programma */
+  .section { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px; margin: 12px 0; }
+  .section > h5 { margin: 2px 2px 10px; font-size: 13px; font-weight: 600; color: var(--accent); }
+  .fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+  .field { display: flex; flex-direction: column; gap: 5px; }
+  .field > span { font-size: 12px; color: var(--muted); }
+  .inp { display: flex; align-items: center; background: var(--surface2); border: 1px solid var(--line); border-radius: 12px; padding: 0 10px; }
+  .inp:focus-within { border-color: var(--accent); }
+  .inp input, .inp select, select { flex: 1; min-width: 0; font: inherit; font-size: 17px; padding: 11px 2px; background: transparent; color: var(--text); border: 0; outline: none; }
+  select { background: var(--surface2); border: 1px solid var(--line); border-radius: 12px; padding: 11px 10px; }
+  .inp small { color: var(--muted); font-size: 12px; margin-left: 6px; white-space: nowrap; }
+  input.bad { color: var(--danger); }
+  .field:has(input.bad) .inp { border-color: var(--danger); background: rgba(239,83,80,.08); }
+
+  .errbox { margin: 10px 0; }
+  .err { color: #ff8a80; font-size: 14px; margin: 4px 0; }
+  .ok { color: var(--ok); font-size: 14px; }
+
+  #preview { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; white-space: pre-wrap; word-break: break-all;
+             background: #05070a; border: 1px solid var(--line); padding: 12px; border-radius: 12px; color: #b7c3d6; line-height: 1.5; }
+
+  .confirm { display: flex; flex-direction: column; gap: 10px; }
+  .confirm label { font-size: 14px; color: var(--muted); display: flex; flex-direction: column; gap: 6px; }
+  .confirm input[type=text] { font: inherit; font-size: 17px; padding: 12px; background: var(--surface2); color: var(--text); border: 1px solid var(--line); border-radius: 12px; text-transform: uppercase; letter-spacing: 2px; }
+  .confirm .chk { flex-direction: row; align-items: center; gap: 10px; }
+
+  #log { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; height: 60vh; overflow: auto; background: #05070a;
+         border: 1px solid var(--line); padding: 10px; border-radius: 14px; white-space: pre; color: #b7c3d6; }
+
+  /* barra di navigazione in basso */
+  .tabbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; display: grid; grid-template-columns: repeat(3, 1fr);
+            background: rgba(21,26,35,.96); backdrop-filter: blur(10px); border-top: 1px solid var(--line);
+            padding: 8px 8px calc(8px + env(safe-area-inset-bottom)); }
+  .tabbar button { background: transparent; color: var(--muted); font-size: 13px; font-weight: 600; padding: 8px 4px; min-height: 52px; display: flex; flex-direction: column; align-items: center; gap: 4px; border-radius: 12px; }
+  .tabbar button .ico { font-size: 20px; line-height: 1; }
+  .tabbar button.active { color: var(--accent); background: rgba(41,182,246,.1); }
+
+  @media (min-width: 760px) {
+    main { padding-top: 20px; }
+    .stats { grid-template-columns: repeat(3, 180px); }
+  }
 </style>
 </head>
 <body>
 
-<h3>NC3000 · controllo</h3>
-<p class="note"><b>Attenzione:</b> questa pagina può avviare cicli reali. Ogni avvio è mostrato in anteprima con i byte esatti e va confermato. Prima di usarla con pile: prova su un canale senza pila, poi con una pila a corrente bassa (100 mA). Se qualcosa non torna, usa <b>Ferma</b>.</p>
+<header class="topbar">
+  <div class="brand">NC3000<span> · controllo</span></div>
+  <span id="status">Non connesso</span>
+</header>
 
-<div>
-  <button id="btnConnect">Connetti</button>
-  <button id="btnPoll" disabled>Avvia letture</button>
-  <button id="btnDisc" disabled>Disconnetti</button>
-  <button id="btnExport" disabled>Esporta CSV</button>
-</div>
-<p id="status">Non connesso</p>
-<p class="note">Inviati: <span id="tx">0</span> · risposte valide: <span id="rxok">0</span> · scartate: <span id="rxbad">0</span></p>
+<main>
 
-<h4>Stato canali</h4>
-<table id="latest">
-  <tr><th>Canale</th><th>Tensione</th><th>Temperatura</th><th>Contatore</th><th>Byte 18</th><th>Ultimo</th></tr>
-</table>
-<p class="note">Contatore: byte 10–11, ipotesi di unità 0,5 mAh caricati (coerente con 0,5 A). Byte 18 = modo (02 in carica, 04 altro).</p>
+  <!-- MONITOR -->
+  <section id="tab-monitor" class="tab active">
+    <div class="actions">
+      <button id="btnConnect" class="primary">Connetti</button>
+      <button id="btnPoll" disabled>Avvia letture</button>
+      <button id="btnDisc" class="ghost" disabled>Disconnetti</button>
+      <button id="btnExport" class="ghost" disabled>Esporta CSV</button>
+    </div>
 
-<h4>Programma</h4>
-<div class="box">
-  <div class="grid">
-    <label>Canale <select id="p_position"><option value="1">CH1</option><option value="2">CH2</option><option value="3">CH3</option><option value="4">CH4</option></select></label>
-    <label>Capacità (mAh) <input type="number" id="p_capacity" value="950"></label>
-    <label>Carica (mA) <input type="number" id="p_chargeE" value="500"></label>
-    <label>Scarica (mA) <input type="number" id="p_dischargeE" value="2500"></label>
-    <label>Fine carica (mV) <input type="number" id="p_inStopVoltage" value="1700"></label>
-    <label>Fine scarica (mV) <input type="number" id="p_outStopVoltage" value="990"></label>
-    <label>Corrente fine carica (mA, 0 = off) <input type="number" id="p_inStopCurrent" value="0"></label>
-    <label>Corrente fine scarica (mA, 0 = usa scarica) <input type="number" id="p_outStopCurrent" value="0"></label>
-    <label>Pausa dopo carica (min) <input type="number" id="p_chargeRestTime" value="5"></label>
-    <label>Pausa dopo scarica (min) <input type="number" id="p_dischargeRestTime" value="10"></label>
-    <label>Cicli <input type="number" id="p_cycleCount" value="3"></label>
-    <label>Modalità ciclo (valore) <input type="number" id="p_cycleMode" value="0"></label>
-    <label>−ΔV (mV) <input type="number" id="p_detalV" value="6"></label>
-    <label>Timer spegnimento (min) <input type="number" id="p_inTimeProtect" value="180"></label>
-    <label>Protezione temperatura (°C) <input type="number" id="p_tempProtect" value="60"></label>
-    <label>Capacità massima (mAh) <input type="number" id="p_inMaxbostCapacity" value="300"></label>
-    <label>Trickle (mA) <input type="number" id="p_track" value="0"></label>
-    <label>Mantenimento (mV) <input type="number" id="p_restartVolt" value="0"></label>
-    <label>Turbo (0/1) <input type="number" id="p_truboMode" value="0"></label>
-    <label>Modello (valore) <input type="number" id="p_model" value="0"></label>
-  </div>
-  <p class="note">Modalità ciclo: 0 è il valore predefinito dell'app, probabilmente "C->D" (carica poi scarica). Modello, modalità e trickle sono ancora da confermare: se hai dubbi lasciali ai valori di default.</p>
-  <div id="errors"></div>
-  <div>
-    <button id="btnPreview">Anteprima</button>
-  </div>
-</div>
+    <div class="stats">
+      <div class="stat"><b id="tx">0</b><small>inviati</small></div>
+      <div class="stat"><b id="rxok">0</b><small>valide</small></div>
+      <div class="stat"><b id="rxbad">0</b><small>scartate</small></div>
+    </div>
 
-<h4>Anteprima</h4>
-<div id="preview">Premi Anteprima per vedere i byte che verranno inviati.</div>
+    <h4>Canali</h4>
+    <div id="latest" class="cards"></div>
+    <p class="note">Contatore: ipotesi di unità 0,5 mAh caricati (coerente con 0,5 A). Il modo (byte 18) è da confermare.</p>
 
-<div class="box">
-  <label>Scrivi <b>AVVIA</b> per confermare <input type="text" id="confirmStart" size="10"></label>
-  <label><input type="checkbox" id="chkStart"> Ho verificato che il canale ha la pila giusta e i valori corrispondono</label>
-  <div><button id="btnStart" class="warn" disabled>Avvia programma</button></div>
-</div>
+    <h4>Tensione nel tempo</h4>
+    <div class="card-box" style="padding:8px"><canvas id="chartV"></canvas></div>
+    <h4>Temperatura nel tempo</h4>
+    <div class="card-box" style="padding:8px"><canvas id="chartT"></canvas></div>
+  </section>
 
-<div class="box">
-  <label>Scrivi <b>FERMA</b> <input type="text" id="confirmStop" size="10"></label>
-  <div>
-    <button id="btnStopCh" class="warn" disabled>Ferma canale selezionato</button>
-    <button id="btnStopAll" class="warn" disabled>Ferma tutti i canali</button>
-  </div>
-</div>
+  <!-- PROGRAMMA -->
+  <section id="tab-program" class="tab">
+    <p class="note"><b>Attenzione:</b> qui si avviano cicli reali. Ogni avvio mostra prima l'anteprima dei byte e richiede conferma. Prova prima su un canale senza pila, poi con una pila a 100 mA.</p>
 
-<h4>Tensione nel tempo</h4>
-<canvas id="chartV"></canvas>
-<h4>Temperatura nel tempo</h4>
-<canvas id="chartT"></canvas>
+    <div class="section">
+      <h5>Canale e capacità</h5>
+      <div class="fields">
+        <label class="field"><span>Canale</span>
+          <div class="inp"><select id="p_position"><option value="1">CH1</option><option value="2">CH2</option><option value="3">CH3</option><option value="4">CH4</option></select></div></label>
+        <label class="field"><span>Capacità</span>
+          <div class="inp"><input type="number" id="p_capacity" value="950" inputmode="numeric"><small>mAh</small></div></label>
+      </div>
+    </div>
 
-<h4>Registro</h4>
-<div id="log"></div>
+    <div class="section">
+      <h5>Correnti e tensioni</h5>
+      <div class="fields">
+        <label class="field"><span>Carica</span><div class="inp"><input type="number" id="p_chargeE" value="500" inputmode="numeric"><small>mA</small></div></label>
+        <label class="field"><span>Scarica</span><div class="inp"><input type="number" id="p_dischargeE" value="2500" inputmode="numeric"><small>mA</small></div></label>
+        <label class="field"><span>Fine carica</span><div class="inp"><input type="number" id="p_inStopVoltage" value="1700" inputmode="numeric"><small>mV</small></div></label>
+        <label class="field"><span>Fine scarica</span><div class="inp"><input type="number" id="p_outStopVoltage" value="990" inputmode="numeric"><small>mV</small></div></label>
+        <label class="field"><span>Corrente fine carica</span><div class="inp"><input type="number" id="p_inStopCurrent" value="0" inputmode="numeric"><small>mA · 0 off</small></div></label>
+        <label class="field"><span>Corrente fine scarica</span><div class="inp"><input type="number" id="p_outStopCurrent" value="0" inputmode="numeric"><small>mA · 0 usa scarica</small></div></label>
+      </div>
+    </div>
+
+    <div class="section">
+      <h5>Pause e cicli</h5>
+      <div class="fields">
+        <label class="field"><span>Pausa dopo carica</span><div class="inp"><input type="number" id="p_chargeRestTime" value="5" inputmode="numeric"><small>min</small></div></label>
+        <label class="field"><span>Pausa dopo scarica</span><div class="inp"><input type="number" id="p_dischargeRestTime" value="10" inputmode="numeric"><small>min</small></div></label>
+        <label class="field"><span>Cicli</span><div class="inp"><input type="number" id="p_cycleCount" value="3" inputmode="numeric"></div></label>
+        <label class="field"><span>Modalità ciclo</span><div class="inp"><input type="number" id="p_cycleMode" value="0" inputmode="numeric"><small>0 predef.</small></div></label>
+        <label class="field"><span>−ΔV</span><div class="inp"><input type="number" id="p_detalV" value="6" inputmode="numeric"><small>mV</small></div></label>
+      </div>
+    </div>
+
+    <div class="section">
+      <h5>Protezioni</h5>
+      <div class="fields">
+        <label class="field"><span>Timer spegnimento</span><div class="inp"><input type="number" id="p_inTimeProtect" value="180" inputmode="numeric"><small>min</small></div></label>
+        <label class="field"><span>Protezione temperatura</span><div class="inp"><input type="number" id="p_tempProtect" value="60" inputmode="numeric"><small>°C</small></div></label>
+        <label class="field"><span>Capacità massima</span><div class="inp"><input type="number" id="p_inMaxbostCapacity" value="300" inputmode="numeric"><small>mAh</small></div></label>
+      </div>
+    </div>
+
+    <div class="section">
+      <h5>Avanzate · da confermare</h5>
+      <div class="fields">
+        <label class="field"><span>Modello</span><div class="inp"><input type="number" id="p_model" value="0" inputmode="numeric"></div></label>
+        <label class="field"><span>Trickle</span><div class="inp"><input type="number" id="p_track" value="0" inputmode="numeric"><small>mA</small></div></label>
+        <label class="field"><span>Mantenimento</span><div class="inp"><input type="number" id="p_restartVolt" value="0" inputmode="numeric"><small>mV</small></div></label>
+        <label class="field"><span>Turbo</span><div class="inp"><input type="number" id="p_truboMode" value="0" inputmode="numeric"><small>0/1</small></div></label>
+      </div>
+    </div>
+
+    <div class="errbox" id="errors"></div>
+    <div class="actions"><button id="btnPreview" class="primary">Anteprima</button></div>
+
+    <h4>Anteprima</h4>
+    <div id="preview">Premi Anteprima per vedere i byte che verranno inviati.</div>
+
+    <h4>Avvio</h4>
+    <div class="card-box confirm">
+      <label>Scrivi AVVIA per confermare
+        <input type="text" id="confirmStart" autocomplete="off"></label>
+      <label class="chk"><input type="checkbox" id="chkStart"> Ho verificato che il canale ha la pila giusta e i valori corrispondono</label>
+      <div class="actions"><button id="btnStart" class="danger" disabled>Avvia programma</button></div>
+    </div>
+
+    <h4>Stop</h4>
+    <div class="card-box confirm">
+      <label>Scrivi FERMA per confermare
+        <input type="text" id="confirmStop" autocomplete="off"></label>
+      <div class="actions">
+        <button id="btnStopCh" class="danger" disabled>Ferma canale selezionato</button>
+        <button id="btnStopAll" class="danger" disabled>Ferma tutti</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- REGISTRO -->
+  <section id="tab-log" class="tab">
+    <h4>Registro</h4>
+    <div id="log"></div>
+  </section>
+
+</main>
+
+<nav class="tabbar">
+  <button data-tab="tab-monitor" class="active"><span class="ico">▦</span>Monitor</button>
+  <button data-tab="tab-program"><span class="ico">⚡</span>Programma</button>
+  <button data-tab="tab-log"><span class="ico">≡</span>Registro</button>
+</nav>
 
 <script>
 const SVC = '0000ffe0-0000-1000-8000-00805f9b34fb';
@@ -294,15 +435,21 @@ function onData(ev) {
 }
 
 function renderLatest() {
-  let html = '<tr><th>Canale</th><th>Tensione</th><th>Temperatura</th><th>Contatore</th><th>Byte 18</th><th>Ultimo</th></tr>';
-  for (const ch of CHANNELS) {
+  const box = $('latest');
+  box.innerHTML = CHANNELS.map(ch => {
     const s = latest[ch];
-    if (!s) { html += '<tr><td>CH' + ch + '</td><td colspan="5">—</td></tr>'; continue; }
-    html += '<tr><td style="color:' + COLORS[ch] + '">CH' + ch + '</td><td>' + (s.mV / 1000).toFixed(3) +
-            ' V</td><td>' + s.tempC + ' °C</td><td>' + s.counter + ' s / ' + (s.raw1011 * 0.5).toFixed(1) +
-            ' mAh</td><td>' + s.mode.toString(16).padStart(2, '0') + '</td><td>' + s.t.toFixed(1) + ' s</td></tr>';
-  }
-  $('latest').innerHTML = html;
+    if (!s) {
+      return '<div class="card idle"><div class="cardhead"><span class="ch" style="color:' + COLORS[ch] + '">CH' + ch +
+             '</span><span class="badge">in attesa</span></div><div class="v">—</div></div>';
+    }
+    const modo = s.mode.toString(16).padStart(2, '0');
+    return '<div class="card on"><div class="cardhead"><span class="ch" style="color:' + COLORS[ch] + '">CH' + ch +
+           '</span><span class="badge' + (s.mode === 0x02 ? ' chg' : '') + '">modo ' + modo + '</span></div>' +
+           '<div class="v">' + (s.mV / 1000).toFixed(3) + '<small> V</small></div>' +
+           '<div class="metrics"><div><b>' + s.tempC + '</b><small>°C</small></div>' +
+           '<div><b>' + (s.raw1011 * 0.5).toFixed(1) + '</b><small>mAh*</small></div></div>' +
+           '<div class="sub">aggiornato ' + s.t.toFixed(1) + ' s · contatore ' + s.counter + ' s</div></div>';
+  }).join('');
 }
 
 function seriesOf(kind) {
@@ -536,6 +683,15 @@ $('confirmStop').oninput = updateStartButton;
 for (const id of ['p_position','p_capacity','p_chargeE','p_dischargeE','p_inStopVoltage','p_outStopVoltage','p_inStopCurrent','p_outStopCurrent','p_chargeRestTime','p_dischargeRestTime','p_cycleCount','p_cycleMode','p_detalV','p_inTimeProtect','p_tempProtect','p_inMaxbostCapacity','p_track','p_restartVolt','p_truboMode','p_model']) {
   $(id).addEventListener('input', () => { previewedKey = null; updateStartButton(); });
 }
+
+
+function showTab(id) {
+  document.querySelectorAll('.tab').forEach(s => s.classList.toggle('active', s.id === id));
+  document.querySelectorAll('.tabbar button').forEach(b => b.classList.toggle('active', b.dataset.tab === id));
+  if (id === 'tab-monitor') drawAll();
+  window.scrollTo(0, 0);
+}
+document.querySelectorAll('.tabbar button').forEach(b => b.addEventListener('click', () => showTab(b.dataset.tab)));
 
 loadParams();
 renderLatest();
