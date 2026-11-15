@@ -3,47 +3,101 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>NC3000 · grafici</title>
+<title>NC3000 · controllo</title>
 <style>
   body { font-family: system-ui, sans-serif; margin: 0; padding: 12px; background: #111; color: #eee; }
   h3 { margin: 8px 0; }
   h4 { margin: 18px 0 6px; }
   button { padding: 10px 14px; margin: 4px 6px 4px 0; font-size: 16px; border: 0; border-radius: 8px; background: #1e88e5; color: #fff; }
+  button.warn { background: #c62828; }
   button:disabled { background: #444; }
+  input, select { font-size: 16px; padding: 6px; background: #222; color: #eee; border: 1px solid #444; border-radius: 6px; }
+  input[type=number] { width: 110px; }
+  input.bad { border-color: #e53935; background: #3a1010; }
+  label { display: inline-block; margin: 4px 10px 4px 0; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 6px 12px; }
   .note { font-size: 13px; color: #aaa; }
-  table { width: 100%; border-collapse: collapse; font-size: 15px; }
-  th, td { text-align: left; padding: 6px 4px; border-bottom: 1px solid #333; }
-  th { color: #aaa; font-weight: normal; font-size: 13px; }
-  canvas { width: 100%; height: 240px; background: #000; border-radius: 6px; display: block; margin-bottom: 8px; }
+  .err { color: #ff8a80; font-size: 14px; }
+  .ok { color: #81c784; font-size: 14px; }
+  .box { border: 1px solid #333; border-radius: 8px; padding: 10px; margin: 8px 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 5px 4px; border-bottom: 1px solid #333; }
+  th { color: #aaa; font-weight: normal; font-size: 12px; }
+  canvas { width: 100%; height: 220px; background: #000; border-radius: 6px; display: block; margin-bottom: 8px; }
+  #preview { font-family: monospace; font-size: 12px; white-space: pre-wrap; background: #000; padding: 8px; border-radius: 6px; }
   #log { font-family: monospace; font-size: 12px; height: 220px; overflow: auto; background: #000; padding: 6px; white-space: pre; border-radius: 6px; }
 </style>
 </head>
 <body>
 
-<h3>NC3000 · grafici</h3>
-<p class="note">Chiede a ciascun canale i suoi dati (comando 0x91) e un battito di connessione (0xEE). Non invia comandi di avvio, arresto o impostazioni: il codice accetta solo questi due. Connetti azzera i grafici precedenti: esporta prima il CSV.</p>
+<h3>NC3000 · controllo</h3>
+<p class="note"><b>Attenzione:</b> questa pagina può avviare cicli reali. Ogni avvio è mostrato in anteprima con i byte esatti e va confermato. Prima di usarla con pile: prova su un canale senza pila, poi con una pila a corrente bassa (100 mA). Se qualcosa non torna, usa <b>Ferma</b>.</p>
 
 <div>
   <button id="btnConnect">Connetti</button>
-  <button id="btnStart" disabled>Avvia richieste</button>
-  <button id="btnStop" disabled>Ferma</button>
+  <button id="btnPoll" disabled>Avvia letture</button>
+  <button id="btnDisc" disabled>Disconnetti</button>
   <button id="btnExport" disabled>Esporta CSV</button>
 </div>
 <p id="status">Non connesso</p>
 <p class="note">Inviati: <span id="tx">0</span> · risposte valide: <span id="rxok">0</span> · scartate: <span id="rxbad">0</span></p>
 
-<h4>Ultimi valori</h4>
+<h4>Stato canali</h4>
 <table id="latest">
-  <tr><th>Canale</th><th>Tensione</th><th>Temperatura</th><th>Contatore</th><th>Ultimo</th></tr>
-  <tr><td>CH1</td><td colspan="4">—</td></tr>
-  <tr><td>CH2</td><td colspan="4">—</td></tr>
-  <tr><td>CH3</td><td colspan="4">—</td></tr>
-  <tr><td>CH4</td><td colspan="4">—</td></tr>
+  <tr><th>Canale</th><th>Tensione</th><th>Temperatura</th><th>Contatore</th><th>Byte 18</th><th>Ultimo</th></tr>
 </table>
+<p class="note">Contatore: byte 10–11, ipotesi di unità 0,5 mAh caricati (coerente con 0,5 A). Byte 18 = modo (02 in carica, 04 altro).</p>
+
+<h4>Programma</h4>
+<div class="box">
+  <div class="grid">
+    <label>Canale <select id="p_position"><option value="1">CH1</option><option value="2">CH2</option><option value="3">CH3</option><option value="4">CH4</option></select></label>
+    <label>Capacità (mAh) <input type="number" id="p_capacity" value="950"></label>
+    <label>Carica (mA) <input type="number" id="p_chargeE" value="500"></label>
+    <label>Scarica (mA) <input type="number" id="p_dischargeE" value="2500"></label>
+    <label>Fine carica (mV) <input type="number" id="p_inStopVoltage" value="1700"></label>
+    <label>Fine scarica (mV) <input type="number" id="p_outStopVoltage" value="990"></label>
+    <label>Corrente fine carica (mA, 0 = off) <input type="number" id="p_inStopCurrent" value="0"></label>
+    <label>Corrente fine scarica (mA, 0 = usa scarica) <input type="number" id="p_outStopCurrent" value="0"></label>
+    <label>Pausa dopo carica (min) <input type="number" id="p_chargeRestTime" value="5"></label>
+    <label>Pausa dopo scarica (min) <input type="number" id="p_dischargeRestTime" value="10"></label>
+    <label>Cicli <input type="number" id="p_cycleCount" value="3"></label>
+    <label>Modalità ciclo (valore) <input type="number" id="p_cycleMode" value="0"></label>
+    <label>−ΔV (mV) <input type="number" id="p_detalV" value="6"></label>
+    <label>Timer spegnimento (min) <input type="number" id="p_inTimeProtect" value="180"></label>
+    <label>Protezione temperatura (°C) <input type="number" id="p_tempProtect" value="60"></label>
+    <label>Capacità massima (mAh) <input type="number" id="p_inMaxbostCapacity" value="300"></label>
+    <label>Trickle (mA) <input type="number" id="p_track" value="0"></label>
+    <label>Mantenimento (mV) <input type="number" id="p_restartVolt" value="0"></label>
+    <label>Turbo (0/1) <input type="number" id="p_truboMode" value="0"></label>
+    <label>Modello (valore) <input type="number" id="p_model" value="0"></label>
+  </div>
+  <p class="note">Modalità ciclo: 0 è il valore predefinito dell'app, probabilmente "C->D" (carica poi scarica). Modello, modalità e trickle sono ancora da confermare: se hai dubbi lasciali ai valori di default.</p>
+  <div id="errors"></div>
+  <div>
+    <button id="btnPreview">Anteprima</button>
+  </div>
+</div>
+
+<h4>Anteprima</h4>
+<div id="preview">Premi Anteprima per vedere i byte che verranno inviati.</div>
+
+<div class="box">
+  <label>Scrivi <b>AVVIA</b> per confermare <input type="text" id="confirmStart" size="10"></label>
+  <label><input type="checkbox" id="chkStart"> Ho verificato che il canale ha la pila giusta e i valori corrispondono</label>
+  <div><button id="btnStart" class="warn" disabled>Avvia programma</button></div>
+</div>
+
+<div class="box">
+  <label>Scrivi <b>FERMA</b> <input type="text" id="confirmStop" size="10"></label>
+  <div>
+    <button id="btnStopCh" class="warn" disabled>Ferma canale selezionato</button>
+    <button id="btnStopAll" class="warn" disabled>Ferma tutti i canali</button>
+  </div>
+</div>
 
 <h4>Tensione nel tempo</h4>
 <canvas id="chartV"></canvas>
-
 <h4>Temperatura nel tempo</h4>
 <canvas id="chartT"></canvas>
 
@@ -53,36 +107,36 @@
 <script>
 const SVC = '0000ffe0-0000-1000-8000-00805f9b34fb';
 const CHR = '0000ffe1-0000-1000-8000-00805f9b34fb';
-const CMD_HEARTBEAT = 0xEE;
-const CMD_NC_DATA = 0x91;
-const MASKS = [1, 2, 4, 8];
-const CH_OF_MASK = { 1: 1, 2: 2, 4: 3, 8: 4 };
+const CMD_HEARTBEAT = 0xEE, CMD_NC_DATA = 0x91, CMD_START = 0x94, CMD_STOP = 0xFE;
+const MASK_OF_POS = { 1: 1, 2: 2, 3: 4, 4: 8 };
+const POS_OF_MASK = { 1: 1, 2: 2, 4: 3, 8: 4 };
 const CHANNELS = [1, 2, 3, 4];
 const COLORS = { 1: '#4fc3f7', 2: '#ffb74d', 3: '#81c784', 4: '#e57373' };
 const MAX_SAMPLES = 100000;
 const DRAW_POINTS = 3000;
+const WRITE_GAP_MS = 150;
 
-let device = null;
-let char = null;
-let useWnR = true;
-let pollTimer = null;
-let beatTimer = null;
-let maskIdx = 0;
+// Limiti di sicurezza (il codice non invia nulla fuori da questi)
+const LIMITS = {
+  position: [1, 4], model: [0, 255], chargeE: [100, 1000], dischargeE: [100, 2500],
+  capacity: [100, 5000], inStopVoltage: [1400, 1750], outStopVoltage: [900, 1200],
+  inStopCurrent: [0, 300], outStopCurrent: [0, 2500], chargeRestTime: [0, 60],
+  dischargeRestTime: [0, 60], cycleCount: [1, 10], cycleMode: [0, 2], detalV: [3, 15],
+  track: [0, 500], restartVolt: [0, 1500], tempProtect: [40, 65], inTimeProtect: [30, 360],
+  inMaxbostCapacity: [100, 5000], truboMode: [0, 1]
+};
+
+let device = null, char = null, useWnR = true;
+let pollTimer = null, beatTimer = null, maskIdx = 0;
 let writeQueue = Promise.resolve();
-let rxBuf = [];
-let samples = [];
-let latest = {};
-let t0 = 0;
-let txCount = 0, rxOk = 0, rxBad = 0;
-let lastDraw = 0;
+let rxBuf = [], samples = [], latest = {};
+let t0 = 0, txCount = 0, rxOk = 0, rxBad = 0, lastDraw = 0;
 let logLines = [];
+let previewedKey = null;
 
 const $ = id => document.getElementById(id);
-
-function hex(arr) {
-  return Array.from(arr, b => b.toString(16).padStart(2, '0')).join(' ');
-}
-
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+function hex(arr) { return Array.from(arr, b => b.toString(16).padStart(2, '0')).join(' '); }
 function addLog(line) {
   logLines.push(line);
   if (logLines.length > 300) logLines.shift();
@@ -90,13 +144,11 @@ function addLog(line) {
   $('log').scrollTop = $('log').scrollHeight;
 }
 
-// 0F | lunghezza (= totale - 2) | comando | dati... | checksum
+// 0F | lunghezza (totale − 2) | comando | dati | checksum
 function buildFrame(cmd, payload) {
   const n = payload.length;
   const f = new Uint8Array(n + 4);
-  f[0] = 0x0F;
-  f[1] = (n + 2) & 0xFF;
-  f[2] = cmd & 0xFF;
+  f[0] = 0x0F; f[1] = (n + 2) & 0xFF; f[2] = cmd & 0xFF;
   f.set(payload, 3);
   let sum = 0;
   for (let i = 2; i <= n + 2; i++) sum += f[i];
@@ -111,37 +163,86 @@ function checksumOk(f) {
   return (sum & 0xFF) === f[f.length - 1];
 }
 
-// Campi della risposta 0x91 (byte numerati da 0, con 0F come primo)
-function be16(f, i) {
-  return (f[i] << 8) | f[i + 1];
+// Parametri letti dalla pagina
+function readParams() {
+  const p = {};
+  for (const k of Object.keys(LIMITS).concat(['capacity', 'chargeE', 'dischargeE'])) {
+    const el = $('p_' + k);
+    if (el) p[k] = Number(el.value);
+  }
+  p.position = Number($('p_position').value);
+  return p;
 }
 
-function decodeNc(f) {
-  return {
-    ch: CH_OF_MASK[f[3]],
-    mV: be16(f, 6),          // tensione in millivolt
-    tempC: be16(f, 16),      // temperatura in gradi
-    counter: be16(f, 14),    // contatore in secondi
-    raw45: be16(f, 4),
-    raw1011: be16(f, 10),
-    raw1819: be16(f, 18)
-  };
+function validate(p) {
+  const errs = [];
+  const bad = [];
+  for (const k of Object.keys(LIMITS)) {
+    const [lo, hi] = LIMITS[k];
+    const v = p[k];
+    const ok = Number.isFinite(v) && v >= lo && v <= hi && Number.isInteger(v);
+    if (!ok) { errs.push(k + ': valore fuori da ' + lo + '–' + hi); bad.push(k); }
+  }
+  if (p.outStopVoltage >= p.inStopVoltage) { errs.push('fine scarica deve essere sotto la fine carica'); bad.push('outStopVoltage'); }
+  if (p.inTimeProtect < 1.3 * (p.capacity / p.chargeE * 60)) {
+    errs.push('timer troppo corto: serve almeno ' + Math.ceil(1.3 * p.capacity / p.chargeE * 60) + ' min per la carica');
+    bad.push('inTimeProtect');
+  }
+  for (const k of Object.keys(LIMITS)) {
+    const el = $('p_' + k);
+    if (el) el.classList.toggle('bad', bad.includes(k));
+  }
+  return errs;
 }
 
-// Unico punto di invio: solo battito e richiesta dati per canale
-function send(cmd, payload) {
-  const allowed =
-    (cmd === CMD_HEARTBEAT && payload.length === 1 && payload[0] === 0x00) ||
-    (cmd === CMD_NC_DATA && payload.length === 1 && MASKS.includes(payload[0]));
-  if (!allowed) throw new Error('comando non consentito');
+// Blocco 40 byte del comando 0x94, secondo la mappa ricavata dall'APK
+function buildSettings(p) {
+  const b = new Uint8Array(40);
+  const be = (i, v) => { v = Math.max(0, Math.min(65535, v | 0)); b[i] = (v >> 8) & 0xFF; b[i + 1] = v & 0xFF; };
+  b[0] = p.position;
+  b[1] = p.model;
+  be(2, p.chargeE);
+  be(4, p.dischargeE);
+  be(6, p.capacity);
+  be(8, p.inStopVoltage);
+  be(10, p.outStopVoltage);
+  be(12, p.inStopCurrent);
+  be(14, p.outStopCurrent !== 0 ? p.outStopCurrent : p.dischargeE);
+  be(16, p.chargeRestTime);
+  be(18, p.dischargeRestTime);
+  b[20] = p.cycleCount;
+  b[21] = p.cycleMode;
+  b[22] = p.detalV;
+  b[23] = Math.floor(p.track / 10) & 0xFF;
+  be(24, p.restartVolt);
+  b[26] = p.tempProtect || 60;
+  be(27, p.inTimeProtect);
+  be(29, p.inMaxbostCapacity);
+  b[31] = p.truboMode;
+  return b;
+}
+
+// Unico punto di invio: solo i comandi previsti, con i loro formati
+function assertAllowed(cmd, payload) {
+  if (cmd === CMD_HEARTBEAT) return payload.length === 1 && payload[0] === 0x00;
+  if (cmd === CMD_NC_DATA) return payload.length === 1 && [1, 2, 4, 8].includes(payload[0]);
+  if (cmd === CMD_STOP) return payload.length === 1 && [1, 2, 4, 8].includes(payload[0]);
+  if (cmd === CMD_START) return payload.length === 40 && payload[0] >= 1 && payload[0] <= 4;
+  return false;
+}
+
+function enqueue(cmd, payload, label) {
+  if (!assertAllowed(cmd, payload)) throw new Error('comando non consentito');
   const f = buildFrame(cmd, payload);
   writeQueue = writeQueue.then(async () => {
-    if (!char || !device || !device.gatt.connected) return;
+    if (!char || !device || !device.gatt.connected) throw new Error('non connesso');
     if (useWnR) await char.writeValueWithoutResponse(f);
     else await char.writeValue(f);
     txCount++;
     $('tx').textContent = txCount;
-  }).catch(e => addLog('errore invio: ' + e.message));
+    addLog('TX ' + label + '  ' + hex(f));
+    await sleep(WRITE_GAP_MS);
+  }).catch(e => addLog('ERRORE invio: ' + e.message));
   return writeQueue;
 }
 
@@ -152,26 +253,27 @@ function handleFrame(f) {
   $('rxok').textContent = rxOk;
   $('rxbad').textContent = rxBad;
 
-  if (!ok || f[2] !== CMD_NC_DATA || f.length < 20 || !(f[3] in CH_OF_MASK)) {
-    addLog(t.toFixed(1).padStart(8) + ' s  scartata ' + (ok ? '' : '(checksum) ') + hex(f));
+  if (!ok) {
+    addLog(t.toFixed(1).padStart(8) + ' s  RX non valida ' + hex(f));
     return;
   }
-
-  const d = decodeNc(f);
-  const s = { t, ch: d.ch, mV: d.mV, tempC: d.tempC, counter: d.counter,
-              raw45: d.raw45, raw1011: d.raw1011, raw1819: d.raw1819, hex: hex(f) };
+  if (f[2] !== CMD_NC_DATA) {
+    addLog(t.toFixed(1).padStart(8) + ' s  RX risposta comando ' + f[2].toString(16) + '  ' + hex(f));
+    return;
+  }
+  const ch = POS_OF_MASK[f[3]];
+  if (ch === undefined || f.length < 20) {
+    addLog(t.toFixed(1).padStart(8) + ' s  RX dati non riconosciuti ' + hex(f));
+    return;
+  }
+  const be = i => (f[i] << 8) | f[i + 1];
+  const s = { t, ch, mV: be(6), tempC: be(16), counter: be(14), raw45: be(4), raw1011: be(10), raw1819: be(18), mode: f[18], hex: hex(f) };
   samples.push(s);
   if (samples.length > MAX_SAMPLES) samples.shift();
-  latest[d.ch] = s;
-
-  addLog(t.toFixed(1).padStart(8) + ' s  CH' + d.ch + '  ' + (d.mV / 1000).toFixed(3) + ' V  ' +
-         d.tempC + ' °C  cnt ' + d.counter);
+  latest[ch] = s;
+  addLog(t.toFixed(1).padStart(8) + ' s  CH' + ch + '  ' + (s.mV / 1000).toFixed(3) + ' V  ' + s.tempC + ' °C  cnt ' + s.counter);
   renderLatest();
-
-  if (performance.now() - lastDraw > 500) {
-    lastDraw = performance.now();
-    drawAll();
-  }
+  if (performance.now() - lastDraw > 500) { lastDraw = performance.now(); drawAll(); }
 }
 
 function onData(ev) {
@@ -179,17 +281,11 @@ function onData(ev) {
   for (let i = 0; i < dv.byteLength; i++) rxBuf.push(dv.getUint8(i));
   while (rxBuf.length) {
     const s = rxBuf.indexOf(0x0F);
-    if (s < 0) {
-      rxBuf = [];
-      break;
-    }
+    if (s < 0) { rxBuf = []; break; }
     if (s > 0) rxBuf = rxBuf.slice(s);
     if (rxBuf.length < 2) break;
     const total = rxBuf[1] + 2;
-    if (total < 5) {
-      rxBuf = rxBuf.slice(1);
-      continue;
-    }
+    if (total < 5) { rxBuf = rxBuf.slice(1); continue; }
     if (rxBuf.length < total) break;
     const frame = Uint8Array.from(rxBuf.slice(0, total));
     rxBuf = rxBuf.slice(total);
@@ -198,97 +294,60 @@ function onData(ev) {
 }
 
 function renderLatest() {
-  const head = '<tr><th>Canale</th><th>Tensione</th><th>Temperatura</th><th>Contatore</th><th>Ultimo</th></tr>';
-  const rows = CHANNELS.map(ch => {
+  let html = '<tr><th>Canale</th><th>Tensione</th><th>Temperatura</th><th>Contatore</th><th>Byte 18</th><th>Ultimo</th></tr>';
+  for (const ch of CHANNELS) {
     const s = latest[ch];
-    if (!s) return '<tr><td>CH' + ch + '</td><td colspan="4">—</td></tr>';
-    return '<tr><td style="color:' + COLORS[ch] + '">CH' + ch + '</td><td>' +
-           (s.mV / 1000).toFixed(3) + ' V</td><td>' + s.tempC + ' °C</td><td>' +
-           s.counter + ' s</td><td>' + s.t.toFixed(1) + ' s</td></tr>';
-  });
-  $('latest').innerHTML = head + rows.join('');
+    if (!s) { html += '<tr><td>CH' + ch + '</td><td colspan="5">—</td></tr>'; continue; }
+    html += '<tr><td style="color:' + COLORS[ch] + '">CH' + ch + '</td><td>' + (s.mV / 1000).toFixed(3) +
+            ' V</td><td>' + s.tempC + ' °C</td><td>' + s.counter + ' s / ' + (s.raw1011 * 0.5).toFixed(1) +
+            ' mAh</td><td>' + s.mode.toString(16).padStart(2, '0') + '</td><td>' + s.t.toFixed(1) + ' s</td></tr>';
+  }
+  $('latest').innerHTML = html;
 }
 
 function seriesOf(kind) {
   const out = { 1: [], 2: [], 3: [], 4: [] };
-  for (const s of samples) {
-    out[s.ch].push([s.t, kind === 'V' ? s.mV / 1000 : s.tempC]);
-  }
-  for (const ch of CHANNELS) {
-    if (out[ch].length > DRAW_POINTS) out[ch] = out[ch].slice(-DRAW_POINTS);
-  }
+  for (const s of samples) out[s.ch].push([s.t, kind === 'V' ? s.mV / 1000 : s.tempC]);
+  for (const ch of CHANNELS) if (out[ch].length > DRAW_POINTS) out[ch] = out[ch].slice(-DRAW_POINTS);
   return out;
 }
 
 function drawChart(id, series, fmt) {
   const cv = $(id);
   const dpr = window.devicePixelRatio || 1;
-  const w = cv.clientWidth;
-  const h = cv.clientHeight;
-  cv.width = w * dpr;
-  cv.height = h * dpr;
+  const w = cv.clientWidth, h = cv.clientHeight;
+  cv.width = w * dpr; cv.height = h * dpr;
   const ctx = cv.getContext('2d');
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.fillStyle = '#000';
-  ctx.fillRect(0, 0, w, h);
-  ctx.font = '12px sans-serif';
-  ctx.fillStyle = '#888';
-
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, w, h);
+  ctx.font = '12px sans-serif'; ctx.fillStyle = '#888';
   let t1 = Infinity, t2 = -Infinity, y1 = Infinity, y2 = -Infinity, count = 0;
-  for (const ch of CHANNELS) {
-    for (const [t, v] of series[ch]) {
-      count++;
-      if (t < t1) t1 = t;
-      if (t > t2) t2 = t;
-      if (v < y1) y1 = v;
-      if (v > y2) y2 = v;
-    }
+  for (const ch of CHANNELS) for (const [t, v] of series[ch]) {
+    count++;
+    if (t < t1) t1 = t; if (t > t2) t2 = t;
+    if (v < y1) y1 = v; if (v > y2) y2 = v;
   }
-  if (count < 2) {
-    ctx.fillText('in attesa di risposte…', 10, 20);
-    return;
-  }
+  if (count < 2) { ctx.fillText('in attesa di risposte…', 10, 20); return; }
   if (y1 === y2) { y1 -= 0.5; y2 += 0.5; }
-  const pad = (y2 - y1) * 0.08;
-  y1 -= pad;
-  y2 += pad;
+  const pad = (y2 - y1) * 0.08; y1 -= pad; y2 += pad;
   const span = Math.max(t2 - t1, 1);
   const L = 60, R = w - 10, T = 14, B = h - 22;
   const X = t => L + (t - t1) / span * (R - L);
   const Y = v => B - (v - y1) / (y2 - y1) * (B - T);
-
-  ctx.strokeStyle = '#333';
-  ctx.beginPath();
-  ctx.moveTo(L, T);
-  ctx.lineTo(L, B);
-  ctx.lineTo(R, B);
-  ctx.stroke();
-
+  ctx.strokeStyle = '#333'; ctx.beginPath(); ctx.moveTo(L, T); ctx.lineTo(L, B); ctx.lineTo(R, B); ctx.stroke();
   ctx.fillStyle = '#aaa';
-  ctx.fillText(fmt(y2), 4, T + 8);
-  ctx.fillText(fmt(y1), 4, B);
+  ctx.fillText(fmt(y2), 4, T + 8); ctx.fillText(fmt(y1), 4, B);
   ctx.fillText(Math.round(span) + ' s', R - 60, h - 6);
-
   for (const ch of CHANNELS) {
     const s = series[ch];
     if (s.length < 2) continue;
-    ctx.strokeStyle = COLORS[ch];
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    s.forEach(([t, v], i) => {
-      const x = X(t), y = Y(v);
-      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-    });
+    ctx.strokeStyle = COLORS[ch]; ctx.lineWidth = 1.5; ctx.beginPath();
+    s.forEach(([t, v], i) => { const x = X(t), y = Y(v); if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y); });
     ctx.stroke();
   }
-
   let lx = R - 220;
   ctx.font = '13px sans-serif';
-  for (const ch of CHANNELS) {
-    ctx.fillStyle = COLORS[ch];
-    ctx.fillText('● CH' + ch, lx, T + 12);
-    lx += 55;
-  }
+  for (const ch of CHANNELS) { ctx.fillStyle = COLORS[ch]; ctx.fillText('● CH' + ch, lx, T + 12); lx += 55; }
 }
 
 function drawAll() {
@@ -300,30 +359,36 @@ function startPolling() {
   if (pollTimer) return;
   maskIdx = 0;
   pollTimer = setInterval(() => {
-    try { send(CMD_NC_DATA, [MASKS[maskIdx]]); } catch (e) { addLog(e.message); }
-    maskIdx = (maskIdx + 1) % MASKS.length;
+    try { enqueue(CMD_NC_DATA, [[1, 2, 4, 8][maskIdx]], '0x91'); } catch (e) { addLog(e.message); }
+    maskIdx = (maskIdx + 1) % 4;
   }, 250);
   beatTimer = setInterval(() => {
-    try { send(CMD_HEARTBEAT, [0x00]); } catch (e) { addLog(e.message); }
+    try { enqueue(CMD_HEARTBEAT, [0x00], '0xEE'); } catch (e) { addLog(e.message); }
   }, 3000);
-  $('btnStart').disabled = true;
-  $('btnStop').disabled = false;
-  $('status').textContent = 'Richieste in corso';
+  $('btnPoll').disabled = true;
+  $('status').textContent = 'Letture in corso';
 }
 
 function stopPolling() {
   if (pollTimer) clearInterval(pollTimer);
   if (beatTimer) clearInterval(beatTimer);
-  pollTimer = null;
-  beatTimer = null;
+  pollTimer = null; beatTimer = null;
 }
 
 function onDisconnect() {
   stopPolling();
   $('status').textContent = 'Disconnesso: ' + rxOk + ' risposte valide';
-  $('btnConnect').disabled = false;
-  $('btnStart').disabled = true;
-  $('btnStop').disabled = true;
+  setConnected(false);
+}
+
+function setConnected(on) {
+  $('btnConnect').disabled = on;
+  $('btnPoll').disabled = !on;
+  $('btnDisc').disabled = !on;
+  $('btnExport').disabled = !on;
+  $('btnStopCh').disabled = !on;
+  $('btnStopAll').disabled = !on;
+  updateStartButton();
 }
 
 async function connect() {
@@ -334,8 +399,7 @@ async function connect() {
   try {
     $('status').textContent = 'Scelta dispositivo…';
     device = await navigator.bluetooth.requestDevice({
-      filters: [{ namePrefix: '#Charger' }],
-      optionalServices: [SVC]
+      filters: [{ namePrefix: '#Charger' }], optionalServices: [SVC]
     });
     device.addEventListener('gattserverdisconnected', onDisconnect);
     $('status').textContent = 'Connessione…';
@@ -344,33 +408,22 @@ async function connect() {
     char = await svc.getCharacteristic(CHR);
     useWnR = !!char.properties.writeWithoutResponse;
     if (!useWnR && !char.properties.write) throw new Error('caratteristica non scrivibile');
-
-    rxBuf = [];
-    samples = [];
-    latest = {};
-    txCount = 0; rxOk = 0; rxBad = 0;
-    logLines = [];
+    rxBuf = []; samples = []; latest = {};
+    txCount = 0; rxOk = 0; rxBad = 0; logLines = [];
     t0 = Date.now();
-    $('tx').textContent = 0;
-    $('rxok').textContent = 0;
-    $('rxbad').textContent = 0;
-    renderLatest();
-    drawAll();
-
+    $('tx').textContent = 0; $('rxok').textContent = 0; $('rxbad').textContent = 0;
+    renderLatest(); drawAll();
     char.addEventListener('characteristicvaluechanged', onData);
     await char.startNotifications();
-
-    $('status').textContent = 'Connesso. Premi Avvia richieste.';
+    $('status').textContent = 'Connesso';
     addLog('Connesso. Notifiche attive.');
-    $('btnConnect').disabled = true;
-    $('btnStart').disabled = false;
-    $('btnExport').disabled = false;
+    setConnected(true);
   } catch (e) {
     $('status').textContent = 'Errore: ' + e.message;
   }
 }
 
-async function stop() {
+async function disconnect() {
   stopPolling();
   try {
     if (char) {
@@ -379,34 +432,113 @@ async function stop() {
     }
   } catch (e) { /* già chiusa */ }
   if (device && device.gatt.connected) device.gatt.disconnect();
-  $('status').textContent = 'Fermato: ' + rxOk + ' risposte valide';
-  $('btnConnect').disabled = false;
-  $('btnStart').disabled = true;
-  $('btnStop').disabled = true;
+  $('status').textContent = 'Disconnesso: ' + rxOk + ' risposte valide';
+  setConnected(false);
+}
+
+function renderPreview() {
+  const p = readParams();
+  const errs = validate(p);
+  $('errors').innerHTML = errs.length
+    ? errs.map(e => '<div class="err">• ' + e + '</div>').join('')
+    : '<div class="ok">Valori nei limiti</div>';
+  if (errs.length) {
+    previewedKey = null;
+    $('preview').textContent = 'Correggi i valori evidenziati in rosso.';
+    updateStartButton();
+    return;
+  }
+  const blob = buildSettings(p);
+  const frame = buildFrame(CMD_START, Array.from(blob));
+  const expected = (p.capacity / p.chargeE * 60).toFixed(0);
+  const lines = [
+    'Canale CH' + p.position + ' · carica ' + p.chargeE + ' mA · scarica ' + p.dischargeE + ' mA · cicli ' + p.cycleCount,
+    'Carica prevista circa ' + expected + ' min (solo stima), timer ' + p.inTimeProtect + ' min',
+    '',
+    'Blocco impostazioni (40 byte):',
+    hex(blob),
+    '',
+    'Messaggio completo (44 byte, comando 0x94):',
+    hex(frame)
+  ];
+  $('preview').textContent = lines.join('\n');
+  previewedKey = JSON.stringify(p);
+  updateStartButton();
+}
+
+function updateStartButton() {
+  const p = readParams();
+  const ok = previewedKey !== null && previewedKey === JSON.stringify(p) &&
+             $('confirmStart').value === 'AVVIA' && $('chkStart').checked && char !== null;
+  $('btnStart').disabled = !ok;
+  $('btnStopCh').disabled = !(char && $('confirmStop').value === 'FERMA');
+  $('btnStopAll').disabled = !(char && $('confirmStop').value === 'FERMA');
+}
+
+function startProgram() {
+  const p = readParams();
+  if (previewedKey !== JSON.stringify(p)) { addLog('Anteprima non aggiornata'); return; }
+  const blob = buildSettings(p);
+  enqueue(CMD_START, Array.from(blob), '0x94 CH' + p.position + ' (programma)');
+  addLog('Programma inviato su CH' + p.position + '. Controlla lo schermo del caricabatterie e le letture.');
+  $('confirmStart').value = '';
+  $('chkStart').checked = false;
+  updateStartButton();
+}
+
+function stopChannel(pos) {
+  enqueue(CMD_STOP, [MASK_OF_POS[pos]], '0xFE stop CH' + pos);
+}
+
+function stopAll() {
+  for (const pos of [1, 2, 3, 4]) stopChannel(pos);
 }
 
 function exportCsv() {
-  const rows = ['tempo_s,canale,tensione_mV,temperatura_C,contatore_s,byte4_5,byte10_11,byte18_19,hex'];
+  const rows = ['tempo_s,canale,tensione_mV,temperatura_C,contatore_s,byte10_11,byte18,hex'];
   for (const s of samples) {
-    rows.push([
-      s.t.toFixed(3), 'CH' + s.ch, s.mV, s.tempC, s.counter,
-      s.raw45, s.raw1011, s.raw1819, s.hex.replace(/ /g, '')
-    ].join(','));
+    rows.push([s.t.toFixed(3), 'CH' + s.ch, s.mV, s.tempC, s.counter, s.raw1011, s.mode, s.hex.replace(/ /g, '')].join(','));
   }
   const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = 'nc3000_' + new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-') + '.csv';
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
+  document.body.appendChild(a); a.click(); a.remove();
+}
+
+// Ricorda i valori tra una sessione e l'altra (solo su questo browser)
+function saveParams() {
+  try { localStorage.setItem('nc3000_params', JSON.stringify(readParams())); } catch (e) { /* ignora */ }
+}
+function loadParams() {
+  try {
+    const raw = localStorage.getItem('nc3000_params');
+    if (!raw) return;
+    const p = JSON.parse(raw);
+    for (const k of Object.keys(p)) {
+      const el = $(k === 'position' ? 'p_position' : 'p_' + k);
+      if (el) el.value = p[k];
+    }
+  } catch (e) { /* ignora */ }
 }
 
 $('btnConnect').onclick = connect;
-$('btnStart').onclick = startPolling;
-$('btnStop').onclick = stop;
+$('btnPoll').onclick = startPolling;
+$('btnDisc').onclick = disconnect;
 $('btnExport').onclick = exportCsv;
+$('btnPreview').onclick = () => { saveParams(); renderPreview(); };
+$('btnStart').onclick = startProgram;
+$('btnStopCh').onclick = () => stopChannel(Number($('p_position').value));
+$('btnStopAll').onclick = stopAll;
+$('confirmStart').oninput = updateStartButton;
+$('chkStart').onchange = updateStartButton;
+$('confirmStop').oninput = updateStartButton;
+for (const id of ['p_position','p_capacity','p_chargeE','p_dischargeE','p_inStopVoltage','p_outStopVoltage','p_inStopCurrent','p_outStopCurrent','p_chargeRestTime','p_dischargeRestTime','p_cycleCount','p_cycleMode','p_detalV','p_inTimeProtect','p_tempProtect','p_inMaxbostCapacity','p_track','p_restartVolt','p_truboMode','p_model']) {
+  $(id).addEventListener('input', () => { previewedKey = null; updateStartButton(); });
+}
 
+loadParams();
+renderLatest();
 drawAll();
 </script>
 </body>
