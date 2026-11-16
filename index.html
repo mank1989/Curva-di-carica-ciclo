@@ -508,7 +508,7 @@ function assertAllowed(cmd, payload) {
   if (cmd === CMD_HEARTBEAT) return payload.length === 1 && payload[0] === 0x00;
   if (cmd === CMD_NC_DATA) return payload.length === 1 && [1, 2, 4, 8].includes(payload[0]);
   if (cmd === CMD_STOP) return payload.length === 1 && [1, 2, 4, 8].includes(payload[0]);
-  if (cmd === CMD_INFO) return payload.length === 17 && payload[0] === 0x00;
+  if (cmd === CMD_INFO) return payload.length === 17 && (payload[0] === 0x00 || payload[0] === 0x01);
   if (cmd === CMD_STATUS_OCTA) return payload.length === 1 && payload[0] === 0x00;
   if (cmd === CMD_START) return payload.length === 40 && [1, 2, 4, 8].includes(payload[0]);
   return false;
@@ -2044,7 +2044,8 @@ showNoticeIfNeeded();
 function diagShow() {
   const lines = [];
   const withTemp = samples.filter(s => s.dV > 0).length;
-  lines.push('Pacchetti ricevuti: ' + samples.length + ' · con −ΔV (byte 8–9) maggiore di zero: ' + withTemp);
+  const octa = currentModel === 'octa';
+  lines.push((octa ? 'Letture ricevute: ' : 'Pacchetti ricevuti: ') + samples.length + ' · con −ΔV maggiore di zero: ' + withTemp);
   for (const ch of CHANNELS) {
     const s = latest[ch];
     lines.push('');
@@ -2052,7 +2053,9 @@ function diagShow() {
     if (s) lines.push(s.hex || 'pacchetto non disponibile');
   }
   lines.push('');
-  lines.push('Byte: 4–5 corrente · 6–7 tensione · 8–9 −ΔV · 10–11 mAh · 12–15 secondi · 16–17 resistenza · 18 stato · 19 modo · 20 errore');
+  lines.push(octa
+    ? 'Ogni canale è un blocco di 17 byte (il primo è il byte 0): 0–1 corrente · 2–3 tensione · 4–5 −ΔV · 6–7 mAh · 8–11 secondi · 12–13 resistenza · 14 stato · 15 modo · 16 errore'
+    : 'Byte: 4–5 corrente · 6–7 tensione · 8–9 −ΔV · 10–11 mAh · 12–15 secondi · 16–17 resistenza · 18 stato · 19 modo · 20 errore');
   $('diagOut').textContent = lines.join('\n');
 }
 $('btnDiag').onclick = diagShow;
@@ -2106,17 +2109,60 @@ function renderModel() {
   } else {
     head = 'Codice modello: ' + lastInfo.code + '\nCodice non presente nell\'elenco dell\'app SkyRC 2.94.';
   }
-  box.textContent = head + '\n\nRisposta grezza: ' + lastInfo.hex;
+  box.textContent = head + '\nTentativo che ha risposto: ' + (lastInfo.via || '?') + '\n\nRisposta grezza: ' + lastInfo.hex;
 }
 
 function handleInfoFrame(f) {
   infoPending = false;
   clearTimeout(infoTimer);
   const hexTxt = Array.from(f).map(b => b.toString(16).padStart(2, '0')).join(' ');
-  lastInfo = { hex: hexTxt, code: modelCodeFrom(f) };
+  lastInfo = { hex: hexTxt, code: modelCodeFrom(f), via: infoTryName };
+  infoTry = 0;
   renderModel();
   applyDetected(lastInfo.code);
   addLog('RX informazioni ' + hexTxt);
+}
+
+// Leggi modello: tentativi di identificazione, tutti in sola lettura (comando 0x57).
+// Ogni tentativo aspetta INFO_TIMEOUT_MS; nel Registro compare una riga "TX INFO" per ogni tentativo.
+const INFO_TIMEOUT_MS = 3000;
+let infoTries = [], infoTry = 0, infoTryName = '';
+
+function buildInfoTries(macTxt) {
+  const list = [];
+  if (macToBytes(macTxt)) list.push({ name: 'MAC', data: buildInfoData(macTxt) });
+  list.push({ name: 'zeri', data: new Array(17).fill(0) });
+  list.push({ name: 'prefisso 01', data: [1].concat(new Array(16).fill(0)) });
+  return list;
+}
+
+function sendInfoTry() {
+  const box = $('modelOut');
+  const tr = infoTries[infoTry];
+  const n = infoTry + 1, tot = infoTries.length;
+  infoTryName = tr.name;
+  infoPending = true;
+  lastInfo = null;
+  box.textContent = 'Tentativo ' + n + '/' + tot + ' (' + tr.name + ')...';
+  try {
+    enqueue(CMD_INFO, tr.data, 'INFO ' + n + '/' + tot + ' ' + tr.name);
+  } catch (e) {
+    infoPending = false;
+    box.textContent = 'Comando non inviato: ' + e.message;
+    addLog('Leggi modello: ' + e.message);
+    return;
+  }
+  clearTimeout(infoTimer);
+  infoTimer = setTimeout(() => {
+    if (!infoPending) return;
+    infoPending = false;
+    infoTry++;
+    if (infoTry < infoTries.length) { sendInfoTry(); return; }
+    infoTry = 0;
+    box.textContent = 'Nessuna risposta dal caricabatterie dopo ' + tot + ' tentativi (' +
+      infoTries.map(t => t.name).join(', ') + ').\n' +
+      'Nel Registro cerca le righe "TX INFO": mostrano cosa è stato inviato. Se ci sono ma non arriva risposta, manda lo screenshot del Registro.';
+  }, INFO_TIMEOUT_MS);
 }
 
 function requestModel() {
@@ -2130,16 +2176,9 @@ function requestModel() {
     box.textContent = 'MAC non valido: scrivilo come AA:BB:CC:DD:EE:FF, oppure lascia il campo vuoto.';
     return;
   }
-  infoPending = true;
-  lastInfo = null;
-  box.textContent = 'Richiesta inviata, attendo la risposta...';
-  enqueue(CMD_INFO, buildInfoData(macTxt), 'INFO');
-  clearTimeout(infoTimer);
-  infoTimer = setTimeout(() => {
-    if (!infoPending) return;
-    infoPending = false;
-    box.textContent = 'Nessuna risposta dal caricabatterie. Verifica la connessione e riprova. Se persiste, scrivi il MAC del caricabatterie nel campo sopra.';
-  }, 4000);
+  infoTries = buildInfoTries(macTxt);
+  infoTry = 0;
+  sendInfoTry();
 }
 
 $('btnModel').onclick = requestModel;
