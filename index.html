@@ -1988,16 +1988,13 @@ if (document.addEventListener) {
   });
 }
 
-const NOTICE_KEY = 'nc3000_notice_v1';
+// avviso ad ogni apertura della pagina; non compare se il caricabatterie è già connesso
 function showNoticeIfNeeded() {
   const box = $('notice');
   if (!box) return;
-  box.hidden = !!localStorage.getItem(NOTICE_KEY);
+  box.hidden = !!(device && device.gatt && device.gatt.connected);
 }
-$('btnNoticeOk').onclick = () => {
-  try { localStorage.setItem(NOTICE_KEY, '1'); } catch (e) { /* ignora */ }
-  $('notice').hidden = true;
-};
+$('btnNoticeOk').onclick = () => { $('notice').hidden = true; };
 showNoticeIfNeeded();
 
 function diagShow() {
