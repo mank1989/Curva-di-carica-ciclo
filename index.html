@@ -737,8 +737,15 @@ async function connect() {
     setConnected(true);
     setTimeout(requestModel, 300); // legge il modello e imposta i canali
   } catch (e) {
-    $('status').textContent = 'Errore: ' + e.message +
-      (/GATT|connect|network|not found|unsupported|disconnected/i.test(e.message || '') ? ' · Chiudi l\'app SkyRC ufficiale, accendi il caricabatterie e riprova' : '');
+    const msg = e.message || '';
+    if (/cancel/i.test(msg)) {
+      $('status').textContent = 'Nessun caricabatterie scelto: riprova e tocca l\'Octa nella lista.';
+    } else if (/no devices|not found|nessun/i.test(msg)) {
+      $('status').textContent = 'Nessun caricabatterie trovato: accendi l\'Octa, attiva Bluetooth e Posizione, chiudi l\'app SkyRC.';
+    } else {
+      $('status').textContent = 'Errore: ' + msg +
+        (/GATT|connect|network|disconnected/i.test(msg) ? ' · Chiudi l\'app SkyRC ufficiale, accendi il caricabatterie e riprova' : '');
+    }
   }
 }
 
