@@ -161,6 +161,7 @@
 
   <!-- MONITOR -->
   <section id="tab-monitor" class="tab active">
+    <div class="row" style="margin:8px 0"><label>Caricabatterie</label><div class="val"><select id="modelSel"><option value="pro">NC3000 Pro · 4 canali</option><option value="octa">NC3000 Octa · 8 canali</option></select></div></div>
     <div class="btns two" style="margin-top:10px">
       <button id="btnConnect" class="btn">Connetti</button>
       <button id="btnPoll" class="btn ghost" disabled>Avvia letture</button>
@@ -349,6 +350,8 @@
     <div class="row"><label>MAC (facoltativo)</label><div class="val"><input type="text" id="macIn" placeholder="AA:BB:CC:DD:EE:FF" autocomplete="off"></div></div>
     <div class="btns" style="margin-top:6px"><button id="btnModel" class="btn ghost">Leggi modello</button></div>
     <pre id="modelOut" class="hint" style="white-space:pre-wrap;word-break:break-all;font-size:12px">Connetti il caricabatterie, poi premi Leggi modello.</pre>
+    <div class="btns" style="margin-top:6px"><button id="btnStatus" class="btn ghost">Leggi stato (Octa, sola lettura)</button></div>
+    <pre id="statusOut" class="hint" style="white-space:pre-wrap;word-break:break-all;font-size:11px"></pre>
   </section>
 
   <footer>NC3000 · app non ufficiale, non affiliata a SkyRC</footer>
@@ -358,11 +361,12 @@
 const SVC = '0000ffe0-0000-1000-8000-00805f9b34fb';
 const CHR = '0000ffe1-0000-1000-8000-00805f9b34fb';
 const CMD_HEARTBEAT = 0xEE, CMD_NC_DATA = 0x91, CMD_START = 0x94, CMD_STOP = 0xFE;
-const CMD_INFO = 0x57; // richiesta di informazioni (sola lettura), come Cmd.getDeviceInfo dell'app ufficiale
+const CMD_INFO = 0x57;
+const CMD_STATUS_OCTA = 0x9A; // stato di tutti gli slot (Octa), sola lettura // richiesta di informazioni (sola lettura), come Cmd.getDeviceInfo dell'app ufficiale
 const MASK_OF_POS = { 1: 1, 2: 2, 3: 4, 4: 8 };
 const POS_OF_MASK = { 1: 1, 2: 2, 4: 3, 8: 4 };
-const CHANNELS = [1, 2, 3, 4];
-const COLORS = { 1: '#64d2ff', 2: '#bf5af2', 3: '#ffffff', 4: '#ff453a' };
+let CHANNELS = [1, 2, 3, 4];
+const COLORS = { 1: '#64d2ff', 2: '#bf5af2', 3: '#ffffff', 4: '#ff453a', 5: '#ffd60a', 6: '#30d158', 7: '#ff9f0a', 8: '#8e8e93' };
 const MAX_SAMPLES = 100000;
 const DRAW_POINTS = 3000;
 const WRITE_GAP_MS = 150;
@@ -497,10 +501,15 @@ function buildSettings(p) {
 
 // Unico punto di invio: solo i comandi previsti, con i loro formati
 function assertAllowed(cmd, payload) {
+  if (currentModel === 'octa' && ![CMD_HEARTBEAT, CMD_INFO, CMD_STATUS_OCTA].includes(cmd)) {
+    addLog('Octa: comando non ancora verificato, disponibile solo la lettura');
+    return false;
+  }
   if (cmd === CMD_HEARTBEAT) return payload.length === 1 && payload[0] === 0x00;
   if (cmd === CMD_NC_DATA) return payload.length === 1 && [1, 2, 4, 8].includes(payload[0]);
   if (cmd === CMD_STOP) return payload.length === 1 && [1, 2, 4, 8].includes(payload[0]);
   if (cmd === CMD_INFO) return payload.length === 17 && payload[0] === 0x00;
+  if (cmd === CMD_STATUS_OCTA) return payload.length === 1 && payload[0] === 0x00;
   if (cmd === CMD_START) return payload.length === 40 && [1, 2, 4, 8].includes(payload[0]);
   return false;
 }
@@ -525,6 +534,7 @@ function enqueue(cmd, payload, label, cb) {
 
 function handleFrame(f) {
   if (infoPending && f[1] === 0x57) { handleInfoFrame(f); return; }
+  if (f[2] === CMD_STATUS_OCTA) { handleStatusFrame(f); return; }
   const t = (Date.now() - t0) / 1000;
   const ok = checksumOk(f);
   if (ok) rxOk++; else rxBad++;
@@ -552,7 +562,7 @@ function handleFrame(f) {
     mA: be(4),                                                   // corrente, mA
     ir: be(16),                                                  // resistenza interna, mΩ
     cap: be(10),                                                 // capacità della fase, mAh
-    dV: be(8),                                                   // temperatura secondo il parser dell'app; 0 = non trasmessa
+    dV: be(8),                                                   // −ΔV in mV (byte 8–9), come nella tabella Octa/Pro
     counter: ((f[12] << 24) >>> 0) + (f[13] << 16) + (f[14] << 8) + f[15], // tempo, s
     stato: f[18],                                                // 2 carica, 3 scarica, 4 riposo, 5/6 completato
     modo: f[19],                                                 // 0 carica, 1 scarica, 3 ciclo, 4 MaxBoost, 5 turbo
@@ -588,8 +598,8 @@ function onData(ev) {
 
 
 function seriesOf(kind) {
-  const out = { 1: [], 2: [], 3: [], 4: [] };
-  for (const s of samples) out[s.ch].push([s.t, kind === 'V' ? s.mV / 1000 : s.ir]);
+  const out = { 1: [], 2: [], 3: [], 4: [], 5: [], 6: [], 7: [], 8: [] };
+  for (const s of samples) if (out[s.ch]) out[s.ch].push([s.t, kind === 'V' ? s.mV / 1000 : s.ir]);
   for (const ch of CHANNELS) if (out[ch].length > DRAW_POINTS) out[ch] = out[ch].slice(-DRAW_POINTS);
   return out;
 }
@@ -645,6 +655,13 @@ function drawAll() {
 
 function startPolling() {
   if (pollTimer) return;
+  if (currentModel === 'octa') {
+    pollTimer = setInterval(() => { try { enqueue(CMD_STATUS_OCTA, [0x00], '0x9A'); } catch (e) { addLog(e.message); } }, 1000);
+    beatTimer = setInterval(() => { try { enqueue(CMD_HEARTBEAT, [0x00], '0xEE'); } catch (e) { addLog(e.message); } }, 3000);
+    $('btnPoll').disabled = true;
+    $('status').textContent = 'Letture Octa (grezze)';
+    return;
+  }
   maskIdx = 0;
   pollTimer = setInterval(() => {
     try { enqueue(CMD_NC_DATA, [[1, 2, 4, 8][maskIdx]], '0x91'); } catch (e) { addLog(e.message); }
@@ -671,6 +688,7 @@ function onDisconnect() {
 
 function setConnected(on) {
   keepAwake(on);
+  $('modelSel').disabled = on;
   $('btnConnect').disabled = on;
   $('btnPoll').disabled = !on;
   $('btnDisc').disabled = !on;
@@ -717,6 +735,7 @@ async function connect() {
     $('status').textContent = 'Connesso a ' + (device.name || 'dispositivo');
     addLog('Connesso. Notifiche attive.');
     setConnected(true);
+    setTimeout(requestModel, 300); // legge il modello e imposta i canali
   } catch (e) {
     $('status').textContent = 'Errore: ' + e.message +
       (/GATT|connect|network|not found|unsupported|disconnected/i.test(e.message || '') ? ' · Chiudi l\'app SkyRC ufficiale, accendi il caricabatterie e riprova' : '');
@@ -822,6 +841,7 @@ function startProgram() {
 }
 
 function startAll() {
+  if (currentModel === 'octa') { addLog('Octa: avvio non ancora disponibile, solo lettura'); return; }
   const p = readParams();
   if (previewedAllKey !== JSON.stringify(Object.assign({}, p, { position: 0 }))) { addLog('Anteprima non aggiornata'); return; }
   for (const pos of [1, 2, 3, 4]) {
@@ -838,6 +858,7 @@ function stopChannel(pos) {
 }
 
 function stopAll() {
+  if (currentModel === 'octa') { addLog('Octa: stop non ancora disponibile, solo lettura'); return; }
   for (const pos of [1, 2, 3, 4]) stopChannel(pos);
 }
 
@@ -962,10 +983,9 @@ function updateRaceButton() {
 function isNum(v) { return typeof v === 'number' && isFinite(v); }
 function unitStr(v, d, unit) { return isNum(v) ? fmt(v, d) + unit : '—'; }
 
-// temperatura dal parser dell'app (byte 8-9); 0 = sonda non trasmessa
+// temperatura: nei pacchetti non è presente (byte 8–9 = −ΔV)
 function tempOf(s) {
-  if (isNum(s.dV) && s.dV > 0) return s.dV;
-  if (isNum(s.tempC) && s.tempC > 0) return s.tempC;
+  if (isNum(s.tempC) && s.tempC > 0) return s.tempC; // i pacchetti NC3000 non contengono la temperatura: resta null
   return null;
 }
 
@@ -1213,6 +1233,7 @@ function renderCellBoard() {
 
 
 function raceStart() {
+  if (currentModel === 'octa') { addLog('Octa: gara non ancora disponibile, solo lettura'); return; }
   if (raceReasons().length) return;
   const q = raceParams();
   const N = q.seconds;
@@ -1803,7 +1824,7 @@ function renderLatest() {
            '<div class="metrics">' +
            '<div><b>' + corrente + '</b><small>corrente</small></div>' +
            '<div><b>' + s.cap + '</b><small>capacità mAh</small></div>' +
-           '<div><b>' + (s.dV > 0 ? s.dV + ' °C' : '—') + '</b><small>temperatura</small></div>' +
+           '<div><b>' + (s.dV > 0 ? s.dV : '—') + '</b><small>−ΔV mV</small></div>' +
            '</div>' +
            '<div class="sub">' + stato + ' · ' + modo + '</div></div>';
   }).join('');
@@ -2016,7 +2037,7 @@ showNoticeIfNeeded();
 function diagShow() {
   const lines = [];
   const withTemp = samples.filter(s => s.dV > 0).length;
-  lines.push('Pacchetti ricevuti: ' + samples.length + ' · con temperatura (byte 8–9) maggiore di zero: ' + withTemp);
+  lines.push('Pacchetti ricevuti: ' + samples.length + ' · con −ΔV (byte 8–9) maggiore di zero: ' + withTemp);
   for (const ch of CHANNELS) {
     const s = latest[ch];
     lines.push('');
@@ -2024,7 +2045,7 @@ function diagShow() {
     if (s) lines.push(s.hex || 'pacchetto non disponibile');
   }
   lines.push('');
-  lines.push('Byte: 4–5 corrente · 6–7 tensione · 8–9 temperatura · 10–11 mAh · 12–15 secondi · 16–17 resistenza · 18 stato · 19 modo · 20 errore');
+  lines.push('Byte: 4–5 corrente · 6–7 tensione · 8–9 −ΔV · 10–11 mAh · 12–15 secondi · 16–17 resistenza · 18 stato · 19 modo · 20 errore');
   $('diagOut').textContent = lines.join('\n');
 }
 $('btnDiag').onclick = diagShow;
@@ -2087,6 +2108,7 @@ function handleInfoFrame(f) {
   const hexTxt = Array.from(f).map(b => b.toString(16).padStart(2, '0')).join(' ');
   lastInfo = { hex: hexTxt, code: modelCodeFrom(f) };
   renderModel();
+  applyDetected(lastInfo.code);
   addLog('RX informazioni ' + hexTxt);
 }
 
@@ -2114,6 +2136,69 @@ function requestModel() {
 }
 
 $('btnModel').onclick = requestModel;
+
+/* ===================== STATO OCTA (SOLA LETTURA) ===================== */
+function handleStatusFrame(f) {
+  const box = $('statusOut');
+  if (box) box.textContent = 'Risposta grezza: ' + f.length + ' byte\n' + hex(f);
+}
+
+function requestStatus() {
+  const box = $('statusOut');
+  if (!device || !device.gatt || !device.gatt.connected) {
+    box.textContent = 'Prima connetti il caricabatterie (scheda Monitor).';
+    return;
+  }
+  box.textContent = 'Richiesta inviata, attendo la risposta...';
+  enqueue(CMD_STATUS_OCTA, [0x00], 'STATO');
+}
+
+$('btnStatus').onclick = requestStatus;
+
+/* ===================== MODELLO: NC3000 PRO (4 CANALI) / OCTA (8 CANALI) ===================== */
+const MODEL_KEY = 'nc3000_model_v1';
+const MODEL_DEF = {
+  pro: { label: 'NC3000 Pro · 4 canali', n: 4 },
+  octa: { label: 'NC3000 Octa · 8 canali', n: 8 }
+};
+let currentModel = 'pro';
+
+function applyModel(m) {
+  currentModel = MODEL_DEF[m] ? m : 'pro';
+  CHANNELS = Array.from({ length: MODEL_DEF[currentModel].n }, (_, i) => i + 1);
+  $('modelSel').value = currentModel;
+  try { localStorage.setItem(MODEL_KEY, currentModel); } catch (e) { /* ignora */ }
+  renderLatest();
+  drawAll();
+  $('status').textContent = MODEL_DEF[currentModel].label +
+    (currentModel === 'octa' ? ' · solo lettura, comandi in verifica' : '');
+}
+
+$('modelSel').onchange = () => {
+  if (device && device.gatt && device.gatt.connected) {
+    $('modelSel').value = currentModel;
+    addLog('Disconnetti prima di cambiare modello');
+    return;
+  }
+  applyModel($('modelSel').value);
+};
+
+applyModel(localStorage.getItem(MODEL_KEY) || 'pro');
+
+/* ===================== RILEVAMENTO AUTOMATICO DEL MODELLO ===================== */
+// codice modello -> modello dell'app. L'Octa non è ancora in elenco: il suo codice va aggiunto qui.
+const MODEL_BY_CODE = { '100209': 'pro' };
+
+function applyDetected(code) {
+  if (!code) return;
+  const m = MODEL_BY_CODE[code];
+  if (m) {
+    applyModel(m);
+    $('status').textContent = 'Rilevato ' + MODEL_DEF[m].label + ' (codice ' + code + ')';
+  } else {
+    $('status').textContent = 'Codice ' + code + ' non riconosciuto: scegli il modello nel menu';
+  }
+}
 
 (function splash() {
   const s = document.getElementById('splash');
