@@ -289,6 +289,10 @@
       <div class="row"><label><input type="checkbox" id="r_ch2" checked style="accent-color:var(--accent);width:18px;height:18px;margin-right:8px"> Uscita 2</label><div class="val"><input type="text" id="r_name2" placeholder="Nome pila" style="width:140px;text-align:left;color:var(--text)"></div></div>
       <div class="row"><label><input type="checkbox" id="r_ch3" style="accent-color:var(--accent);width:18px;height:18px;margin-right:8px"> Uscita 3</label><div class="val"><input type="text" id="r_name3" placeholder="Nome pila" style="width:140px;text-align:left;color:var(--text)"></div></div>
       <div class="row"><label><input type="checkbox" id="r_ch4" style="accent-color:var(--accent);width:18px;height:18px;margin-right:8px"> Uscita 4</label><div class="val"><input type="text" id="r_name4" placeholder="Nome pila" style="width:140px;text-align:left;color:var(--text)"></div></div>
+      <div class="row" id="row_ch5" style="display:none"><label><input type="checkbox" id="r_ch5" style="accent-color:var(--accent);width:18px;height:18px;margin-right:8px"> Uscita 5</label><div class="val"><input type="text" id="r_name5" placeholder="Nome pila" style="width:140px;text-align:left;color:var(--text)"></div></div>
+      <div class="row" id="row_ch6" style="display:none"><label><input type="checkbox" id="r_ch6" style="accent-color:var(--accent);width:18px;height:18px;margin-right:8px"> Uscita 6</label><div class="val"><input type="text" id="r_name6" placeholder="Nome pila" style="width:140px;text-align:left;color:var(--text)"></div></div>
+      <div class="row" id="row_ch7" style="display:none"><label><input type="checkbox" id="r_ch7" style="accent-color:var(--accent);width:18px;height:18px;margin-right:8px"> Uscita 7</label><div class="val"><input type="text" id="r_name7" placeholder="Nome pila" style="width:140px;text-align:left;color:var(--text)"></div></div>
+      <div class="row" id="row_ch8" style="display:none"><label><input type="checkbox" id="r_ch8" style="accent-color:var(--accent);width:18px;height:18px;margin-right:8px"> Uscita 8</label><div class="val"><input type="text" id="r_name8" placeholder="Nome pila" style="width:140px;text-align:left;color:var(--text)"></div></div>
     </div>
 
     <div class="sec">AVVISI</div>
@@ -363,8 +367,8 @@ const CHR = '0000ffe1-0000-1000-8000-00805f9b34fb';
 const CMD_HEARTBEAT = 0xEE, CMD_NC_DATA = 0x91, CMD_START = 0x94, CMD_STOP = 0xFE;
 const CMD_INFO = 0x57;
 const CMD_STATUS_OCTA = 0x9A; // stato di tutti gli slot (Octa), sola lettura // richiesta di informazioni (sola lettura), come Cmd.getDeviceInfo dell'app ufficiale
-const MASK_OF_POS = { 1: 1, 2: 2, 3: 4, 4: 8 };
-const POS_OF_MASK = { 1: 1, 2: 2, 4: 3, 8: 4 };
+const MASK_OF_POS = { 1: 1, 2: 2, 3: 4, 4: 8, 5: 16, 6: 32, 7: 64, 8: 128 };
+const POS_OF_MASK = { 1: 1, 2: 2, 4: 3, 8: 4, 16: 5, 32: 6, 64: 7, 128: 8 };
 let CHANNELS = [1, 2, 3, 4];
 const COLORS = { 1: '#64d2ff', 2: '#bf5af2', 3: '#ffffff', 4: '#ff453a', 5: '#ffd60a', 6: '#30d158', 7: '#ff9f0a', 8: '#8e8e93' };
 const MAX_SAMPLES = 100000;
@@ -373,7 +377,7 @@ const WRITE_GAP_MS = 150;
 
 // Limiti di sicurezza (il codice non invia nulla fuori da questi)
 const LIMITS = {
-  position: [1, 4], model: [0, 255], chargeE: [100, 1000], dischargeE: [100, 2500],
+  position: [1, 8], model: [0, 255], chargeE: [100, 1000], dischargeE: [100, 2500],
   capacity: [100, 5000], inStopVoltage: [1400, 1750], outStopVoltage: [900, 1200],
   inStopCurrent: [0, 300], outStopCurrent: [0, 2500], chargeRestTime: [0, 60],
   dischargeRestTime: [0, 60], cycleCount: [1, 10], cycleMode: [0, 3], detalV: [3, 15],
@@ -499,18 +503,23 @@ function buildSettings(p) {
   return b;
 }
 
+// maschera di un solo canale: 1, 2, 4, 8 sul Pro; fino a 128 sull'Octa
+function isSlotMask(m) {
+  return (currentModel === 'octa' ? [1, 2, 4, 8, 16, 32, 64, 128] : [1, 2, 4, 8]).includes(m);
+}
+
 // Unico punto di invio: solo i comandi previsti, con i loro formati
 function assertAllowed(cmd, payload) {
-  if (currentModel === 'octa' && ![CMD_HEARTBEAT, CMD_INFO, CMD_STATUS_OCTA].includes(cmd)) {
-    addLog('Octa: comando non ancora verificato, disponibile solo la lettura');
+  if (currentModel === 'octa' && cmd === CMD_NC_DATA) {
+    addLog('Octa: il comando 0x91 non si usa, i dati si leggono con 0x9A');
     return false;
   }
   if (cmd === CMD_HEARTBEAT) return payload.length === 1 && payload[0] === 0x00;
   if (cmd === CMD_NC_DATA) return payload.length === 1 && [1, 2, 4, 8].includes(payload[0]);
-  if (cmd === CMD_STOP) return payload.length === 1 && [1, 2, 4, 8].includes(payload[0]);
+  if (cmd === CMD_STOP) return payload.length === 1 && isSlotMask(payload[0]);
   if (cmd === CMD_INFO) return payload.length === 17 && (payload[0] === 0x00 || payload[0] === 0x01);
   if (cmd === CMD_STATUS_OCTA) return payload.length === 1 && payload[0] === 0x00;
-  if (cmd === CMD_START) return payload.length === 40 && [1, 2, 4, 8].includes(payload[0]);
+  if (cmd === CMD_START) return payload.length === 40 && isSlotMask(payload[0]);
   return false;
 }
 
@@ -830,7 +839,7 @@ function updateStartButton() {
   $('btnStopAll').disabled = tr.length > 0;
   const ar = startAllReasons();
   $('btnStartAll').disabled = ar.length > 0;
-  $('startAllHint').textContent = ar.length ? 'Per avviare tutti: ' + ar.join(' · ') : 'Pronto: avvia CH1–CH4 con questi valori';
+  $('startAllHint').textContent = ar.length ? 'Per avviare tutti: ' + ar.join(' · ') : 'Pronto: avvia ' + chanRangeTxt() + ' con questi valori';
   $('startHint').textContent = sr.length ? 'Per avviare: ' + sr.join(' · ') : 'Pronto all\'avvio';
   updateRaceButton();
   $('stopHint').textContent = tr.length ? 'Per fermare: ' + tr.join(' · ') : 'Stop immediato sul canale selezionato o su tutti';
@@ -847,16 +856,20 @@ function startProgram() {
   updateStartButton();
 }
 
+// etichetta delle uscite del modello: CH1–CH4 sul Pro, CH1–CH8 sull'Octa
+function chanRangeTxt() {
+  return 'CH' + CHANNELS[0] + '–CH' + CHANNELS[CHANNELS.length - 1];
+}
+
 function startAll() {
-  if (currentModel === 'octa') { addLog('Octa: avvio non ancora disponibile, solo lettura'); return; }
   const p = readParams();
   if (previewedAllKey !== JSON.stringify(Object.assign({}, p, { position: 0 }))) { addLog('Anteprima non aggiornata'); return; }
-  for (const pos of [1, 2, 3, 4]) {
+  for (const pos of CHANNELS) {
     enqueue(CMD_START, Array.from(buildSettings(Object.assign({}, p, { position: pos }))), '0x94 CH' + pos + ' (tutti)');
   }
-  addLog('Programma inviato su CH1–CH4.');
+  addLog('Programma inviato su ' + chanRangeTxt() + '.');
   $('chkAll').checked = false;
-  $('startAllHint').textContent = 'Inviato a CH1–CH4. Controlla lo schermo del caricabatterie.';
+  $('startAllHint').textContent = 'Inviato a ' + chanRangeTxt() + '. Controlla lo schermo del caricabatterie.';
   updateStartButton();
 }
 
@@ -865,8 +878,7 @@ function stopChannel(pos) {
 }
 
 function stopAll() {
-  if (currentModel === 'octa') { addLog('Octa: stop non ancora disponibile, solo lettura'); return; }
-  for (const pos of [1, 2, 3, 4]) stopChannel(pos);
+  for (const pos of CHANNELS) stopChannel(pos);
 }
 
 function exportCsv() {
@@ -1240,7 +1252,6 @@ function renderCellBoard() {
 
 
 function raceStart() {
-  if (currentModel === 'octa') { addLog('Octa: gara non ancora disponibile, solo lettura'); return; }
   if (raceReasons().length) return;
   const q = raceParams();
   const N = q.seconds;
@@ -1275,10 +1286,14 @@ function raceStart() {
   }
   racePollTimer = setInterval(() => {
     if (!race || pendingWrites >= 2) return;
-    const masks = race.chans.map(c => MASK_OF_POS[c]);
-    enqueue(CMD_NC_DATA, [masks[race.pollIdx % masks.length]], '0x91 gara');
+    if (currentModel === 'octa') {
+      enqueue(CMD_STATUS_OCTA, [0x00], '0x9A gara');   // l'Octa dà tutti gli slot in una sola risposta
+    } else {
+      const masks = race.chans.map(c => MASK_OF_POS[c]);
+      enqueue(CMD_NC_DATA, [masks[race.pollIdx % masks.length]], '0x91 gara');
+    }
     race.pollIdx++;
-  }, 120);
+  }, currentModel === 'octa' ? 200 : 120);
   $('chkRace').checked = false;
   $('raceStatus').textContent = 'Gara in corso su ' + chans.length + ' uscit' + (chans.length > 1 ? 'e' : 'a') + ' · ' + N + ' s';
   updateRaceButton();
@@ -2068,7 +2083,7 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.
 /* ===================== LEGGI MODELLO ===================== */
 // codici modello letti dall'app ufficiale 2.94 (decodeInfo): 6 cifre ASCII nella risposta
 const SKY_MODELS = {
-  '100209': 'NC3000', '100214': 'MC5000', '100228': 'TYPE228', '600153': 'BD380',
+  '100209': 'NC3000', '100214': 'MC5000', '100228': 'NC3000 Octa', '600153': 'BD380',
   '100201': 'D750', '100203': 'D200 NEX METAL', '100230': 'TYPE230', '100232': 'TYPE232'
 };
 let infoPending = false, infoTimer = null, lastInfo = null;
@@ -2264,15 +2279,24 @@ const MODEL_DEF = {
 };
 let currentModel = 'pro';
 
+// le liste di uscite seguono il modello: 4 sul Pro, 8 sull'Octa
+function buildChannelUI() {
+  const sel = $('p_position');
+  const keep = Number(sel.value) || 1;
+  sel.innerHTML = CHANNELS.map(ch => '<option value="' + ch + '">Uscita ' + ch + '</option>').join('');
+  sel.value = String(CHANNELS.includes(keep) ? keep : CHANNELS[0]);
+  for (let ch = 5; ch <= 8; ch++) $('row_ch' + ch).style.display = CHANNELS.includes(ch) ? '' : 'none';
+}
+
 function applyModel(m) {
   currentModel = MODEL_DEF[m] ? m : 'pro';
   CHANNELS = Array.from({ length: MODEL_DEF[currentModel].n }, (_, i) => i + 1);
   $('modelSel').value = currentModel;
   try { localStorage.setItem(MODEL_KEY, currentModel); } catch (e) { /* ignora */ }
+  buildChannelUI();
   renderLatest();
   drawAll();
-  $('status').textContent = MODEL_DEF[currentModel].label +
-    (currentModel === 'octa' ? ' · solo lettura, comandi in verifica' : '');
+  $('status').textContent = MODEL_DEF[currentModel].label;
 }
 
 $('modelSel').onchange = () => {
@@ -2287,14 +2311,17 @@ $('modelSel').onchange = () => {
 applyModel(localStorage.getItem(MODEL_KEY) || 'pro');
 
 /* ===================== RILEVAMENTO AUTOMATICO DEL MODELLO ===================== */
-// codice modello -> modello dell'app. L'Octa non è ancora in elenco: il suo codice va aggiunto qui.
-const MODEL_BY_CODE = { '100209': 'pro' };
+// codice modello -> modello della pagina. 100228 è il codice dell'Octa, letto dal caricatore dell'amico.
+const MODEL_BY_CODE = { '100209': 'pro', '100228': 'octa' };
 
 function applyDetected(code) {
   if (!code) return;
   const m = MODEL_BY_CODE[code];
   if (m) {
+    const changed = m !== currentModel;
     applyModel(m);
+    // se le letture sono già attive, il polling riparte con il protocollo del modello rilevato
+    if (changed && pollTimer) { stopPolling(); startPolling(); }
     $('status').textContent = 'Rilevato ' + MODEL_DEF[m].label + ' (codice ' + code + ')';
   } else {
     $('status').textContent = 'Codice ' + code + ' non riconosciuto: scegli il modello nel menu';
