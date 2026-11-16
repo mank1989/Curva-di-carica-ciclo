@@ -345,6 +345,10 @@
     <div class="sec">DIAGNOSTICA</div>
     <div class="btns" style="margin-top:6px"><button id="btnDiag" class="btn ghost">Mostra ultimi pacchetti</button></div>
     <pre id="diagOut" class="hint" style="white-space:pre-wrap;word-break:break-all;font-size:11px"></pre>
+    <div class="sec">MODELLO</div>
+    <div class="row"><label>MAC (facoltativo)</label><div class="val"><input type="text" id="macIn" placeholder="AA:BB:CC:DD:EE:FF" autocomplete="off"></div></div>
+    <div class="btns" style="margin-top:6px"><button id="btnModel" class="btn ghost">Leggi modello</button></div>
+    <pre id="modelOut" class="hint" style="white-space:pre-wrap;word-break:break-all;font-size:12px">Connetti il caricabatterie, poi premi Leggi modello.</pre>
   </section>
 
   <footer>NC3000 · app non ufficiale, non affiliata a SkyRC</footer>
@@ -354,6 +358,7 @@
 const SVC = '0000ffe0-0000-1000-8000-00805f9b34fb';
 const CHR = '0000ffe1-0000-1000-8000-00805f9b34fb';
 const CMD_HEARTBEAT = 0xEE, CMD_NC_DATA = 0x91, CMD_START = 0x94, CMD_STOP = 0xFE;
+const CMD_INFO = 0x57; // richiesta di informazioni (sola lettura), come Cmd.getDeviceInfo dell'app ufficiale
 const MASK_OF_POS = { 1: 1, 2: 2, 3: 4, 4: 8 };
 const POS_OF_MASK = { 1: 1, 2: 2, 4: 3, 8: 4 };
 const CHANNELS = [1, 2, 3, 4];
@@ -495,6 +500,7 @@ function assertAllowed(cmd, payload) {
   if (cmd === CMD_HEARTBEAT) return payload.length === 1 && payload[0] === 0x00;
   if (cmd === CMD_NC_DATA) return payload.length === 1 && [1, 2, 4, 8].includes(payload[0]);
   if (cmd === CMD_STOP) return payload.length === 1 && [1, 2, 4, 8].includes(payload[0]);
+  if (cmd === CMD_INFO) return payload.length === 17 && payload[0] === 0x00;
   if (cmd === CMD_START) return payload.length === 40 && [1, 2, 4, 8].includes(payload[0]);
   return false;
 }
@@ -518,6 +524,7 @@ function enqueue(cmd, payload, label, cb) {
 }
 
 function handleFrame(f) {
+  if (infoPending && f[1] === 0x57) { handleInfoFrame(f); return; }
   const t = (Date.now() - t0) / 1000;
   const ok = checksumOk(f);
   if (ok) rxOk++; else rxBad++;
@@ -570,7 +577,7 @@ function onData(ev) {
     if (s < 0) { rxBuf = []; break; }
     if (s > 0) rxBuf = rxBuf.slice(s);
     if (rxBuf.length < 2) break;
-    const total = rxBuf[1] + 2;
+    const total = (infoPending && rxBuf[0] === 0x0F && rxBuf[1] === 0x57) ? 20 : rxBuf[1] + 2;
     if (total < 5) { rxBuf = rxBuf.slice(1); continue; }
     if (rxBuf.length < total) break;
     const frame = Uint8Array.from(rxBuf.slice(0, total));
@@ -681,13 +688,22 @@ async function connect() {
   }
   try {
     $('status').textContent = 'Scelta dispositivo…';
+    // niente filtro sul nome: alcuni modelli (es. NC3000 Octa) hanno un nome diverso dal prefisso "#Charger"
     device = await navigator.bluetooth.requestDevice({
-      filters: [{ namePrefix: '#Charger' }], optionalServices: [SVC]
+      acceptAllDevices: true, optionalServices: [SVC]
     });
     device.addEventListener('gattserverdisconnected', onDisconnect);
-    $('status').textContent = 'Connessione…';
+    addLog('Dispositivo scelto: ' + (device.name || 'senza nome') + ' · ' + device.id);
+    $('status').textContent = 'Connessione a ' + (device.name || 'dispositivo') + '…';
     const server = await device.gatt.connect();
-    const svc = await server.getPrimaryService(SVC);
+    // elenca i servizi trovati, così se il dispositivo non è compatibile lo sappiamo subito
+    const services = await server.getPrimaryServices();
+    const svcIds = services.map(s => s.uuid);
+    addLog('Servizi trovati: ' + (svcIds.join(', ') || 'nessuno'));
+    if (!svcIds.includes(SVC)) {
+      throw new Error('servizio di comunicazione non trovato (' + SVC.slice(4, 8) + '). Servizi: ' + (svcIds.map(u => u.slice(4, 8)).join(', ') || 'nessuno') + ' · dispositivo non compatibile');
+    }
+    const svc = services.find(s => s.uuid === SVC);
     char = await svc.getCharacteristic(CHR);
     useWnR = !!char.properties.writeWithoutResponse;
     if (!useWnR && !char.properties.write) throw new Error('caratteristica non scrivibile');
@@ -698,7 +714,7 @@ async function connect() {
     renderLatest(); drawAll();
     char.addEventListener('characteristicvaluechanged', onData);
     await char.startNotifications();
-    $('status').textContent = 'Connesso';
+    $('status').textContent = 'Connesso a ' + (device.name || 'dispositivo');
     addLog('Connesso. Notifiche attive.');
     setConnected(true);
   } catch (e) {
@@ -2017,6 +2033,87 @@ $('btnDiag').onclick = diagShow;
 if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
   navigator.serviceWorker.register('./sw.js').catch(() => { /* ignora */ });
 }
+
+/* ===================== LEGGI MODELLO ===================== */
+// codici modello letti dall'app ufficiale 2.94 (decodeInfo): 6 cifre ASCII nella risposta
+const SKY_MODELS = {
+  '100209': 'NC3000', '100214': 'MC5000', '100228': 'TYPE228', '600153': 'BD380',
+  '100201': 'D750', '100203': 'D200 NEX METAL', '100230': 'TYPE230', '100232': 'TYPE232'
+};
+let infoPending = false, infoTimer = null, lastInfo = null;
+
+// dal MAC (AA:BB:CC:DD:EE:FF) al payload della richiesta: byte in ordine inverso, come getDeviceInfo
+function macToBytes(txt) {
+  const clean = (txt || '').replace(/[^0-9a-fA-F]/g, '');
+  if (clean.length !== 12) return null;
+  const out = [];
+  for (let i = 0; i < 6; i++) out.push(parseInt(clean.substr(i * 2, 2), 16));
+  return out;
+}
+function buildInfoData(macTxt) {
+  const data = new Array(17).fill(0);
+  const mac = macToBytes(macTxt);
+  if (mac) for (let i = 0; i < 6; i++) data[1 + i] = mac[5 - i];
+  return data;
+}
+
+function modelCodeFrom(f) {
+  // il codice è nei byte 3–8 (senza MTU) oppure 4–9 (con MTU), come in decodeInfo
+  for (const start of [3, 4]) {
+    if (f.length < start + 6) continue;
+    const s = String.fromCharCode(...Array.from(f.slice(start, start + 6)));
+    if (/^\d{6}$/.test(s)) return s;
+  }
+  return null;
+}
+
+function renderModel() {
+  const box = $('modelOut');
+  if (!box || !lastInfo) return;
+  let head;
+  if (!lastInfo.code) {
+    head = 'Risposta ricevuta, ma il codice modello non è leggibile.';
+  } else if (SKY_MODELS[lastInfo.code]) {
+    head = 'Codice modello: ' + lastInfo.code + '\nModello riconosciuto: ' + SKY_MODELS[lastInfo.code];
+  } else {
+    head = 'Codice modello: ' + lastInfo.code + '\nCodice non presente nell\'elenco dell\'app SkyRC 2.94.';
+  }
+  box.textContent = head + '\n\nRisposta grezza: ' + lastInfo.hex;
+}
+
+function handleInfoFrame(f) {
+  infoPending = false;
+  clearTimeout(infoTimer);
+  const hexTxt = Array.from(f).map(b => b.toString(16).padStart(2, '0')).join(' ');
+  lastInfo = { hex: hexTxt, code: modelCodeFrom(f) };
+  renderModel();
+  addLog('RX informazioni ' + hexTxt);
+}
+
+function requestModel() {
+  const box = $('modelOut');
+  if (!device || !device.gatt || !device.gatt.connected) {
+    box.textContent = 'Prima connetti il caricabatterie (scheda Monitor), poi premi di nuovo Leggi modello.';
+    return;
+  }
+  const macTxt = $('macIn').value;
+  if (macTxt.trim() && !macToBytes(macTxt)) {
+    box.textContent = 'MAC non valido: scrivilo come AA:BB:CC:DD:EE:FF, oppure lascia il campo vuoto.';
+    return;
+  }
+  infoPending = true;
+  lastInfo = null;
+  box.textContent = 'Richiesta inviata, attendo la risposta...';
+  enqueue(CMD_INFO, buildInfoData(macTxt), 'INFO');
+  clearTimeout(infoTimer);
+  infoTimer = setTimeout(() => {
+    if (!infoPending) return;
+    infoPending = false;
+    box.textContent = 'Nessuna risposta dal caricabatterie. Verifica la connessione e riprova. Se persiste, scrivi il MAC del caricabatterie nel campo sopra.';
+  }, 4000);
+}
+
+$('btnModel').onclick = requestModel;
 
 (function splash() {
   const s = document.getElementById('splash');
