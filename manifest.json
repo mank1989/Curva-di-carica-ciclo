@@ -20,5 +20,8 @@
       "type": "image/png",
       "purpose": "any"
     }
-  ]
+  ],
+  "description": "Controllo e monitoraggio del caricabatterie NC3000 via Bluetooth. App non ufficiale, non affiliata a SkyRC.",
+  "lang": "it",
+  "id": "./"
 }
