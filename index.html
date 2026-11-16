@@ -533,7 +533,7 @@ function enqueue(cmd, payload, label, cb) {
 }
 
 function handleFrame(f) {
-  if (infoPending && f[1] === 0x57) { handleInfoFrame(f); return; }
+  if (infoPending && f[2] === CMD_INFO) { handleInfoFrame(f); return; }
   if (f[2] === CMD_STATUS_OCTA) { handleStatusFrame(f); return; }
   const t = (Date.now() - t0) / 1000;
   const ok = checksumOk(f);
@@ -587,7 +587,7 @@ function onData(ev) {
     if (s < 0) { rxBuf = []; break; }
     if (s > 0) rxBuf = rxBuf.slice(s);
     if (rxBuf.length < 2) break;
-    const total = (infoPending && rxBuf[0] === 0x0F && rxBuf[1] === 0x57) ? 20 : rxBuf[1] + 2;
+    const total = rxBuf[1] + 2; // 0F, lunghezza, comando, dati, checksum
     if (total < 5) { rxBuf = rxBuf.slice(1); continue; }
     if (rxBuf.length < total) break;
     const frame = Uint8Array.from(rxBuf.slice(0, total));
@@ -2145,9 +2145,64 @@ function requestModel() {
 $('btnModel').onclick = requestModel;
 
 /* ===================== STATO OCTA (SOLA LETTURA) ===================== */
+// risposta 0x9A: 142 byte = intestazione di 5 byte + 8 blocchi da 17 byte + checksum
+const OCTA_LEN = 142, OCTA_HDR = 5, OCTA_BLOCK = 17, OCTA_SLOTS = 8;
+
+// legge gli 8 slot; restituisce null se la risposta non è valida (lunghezza, comando, checksum)
+function parseOctaStatus(f) {
+  if (!f || f.length !== OCTA_LEN || f[0] !== 0x0F || f[1] !== OCTA_LEN - 2 || f[2] !== CMD_STATUS_OCTA) return null;
+  if (!checksumOk(f)) return null;
+  const out = [];
+  for (let k = 0; k < OCTA_SLOTS; k++) {
+    const o = OCTA_HDR + k * OCTA_BLOCK;
+    const b = f.slice(o, o + OCTA_BLOCK);
+    out.push({
+      ch: k + 1,
+      mA: (b[0] << 8) | b[1],                                              // corrente, mA
+      mV: (b[2] << 8) | b[3],                                              // tensione, mV
+      dV: (b[4] << 8) | b[5],                                              // −ΔV, mV
+      cap: (b[6] << 8) | b[7],                                             // capacità della fase, mAh
+      counter: ((b[8] << 24) >>> 0) + (b[9] << 16) + (b[10] << 8) + b[11], // durata, s
+      ir: (b[12] << 8) | b[13],                                            // resistenza interna, mΩ
+      stato: b[14],                                                        // 2 carica, 3 scarica, 4 riposo, 5/6 completato
+      modo: b[15],                                                         // 0 carica, 1 scarica, 2 attivazione, 3 ciclo, 4 MaxBoost, 5 turbo
+      err: b[16],                                                          // codice di errore (0 = nessuno)
+      hex: hex(b)
+    });
+  }
+  return out;
+}
+
+// Leggi stato (0x9A): mostra gli 8 slot e alimenta le schede CH1–CH8 quando il modello è Octa
 function handleStatusFrame(f) {
   const box = $('statusOut');
-  if (box) box.textContent = 'Risposta grezza: ' + f.length + ' byte\n' + hex(f);
+  const t = (Date.now() - t0) / 1000;
+  const slots = parseOctaStatus(f);
+  if (!slots) {
+    rxBad++; $('rxbad').textContent = rxBad;
+    if (box) box.textContent = 'Risposta non valida: ' + f.length + ' byte (attesi ' + OCTA_LEN + ', con checksum corretto).\n' + hex(f);
+    addLog(t.toFixed(1).padStart(8) + ' s  RX stato non valido (' + f.length + ' byte)');
+    return;
+  }
+  rxOk++; $('rxok').textContent = rxOk;
+  const lines = slots.map(s => {
+    const stato = STATO_LABEL[s.stato] || ('stato ' + s.stato);
+    const modo = MODE_LABEL[s.modo] || ('modo ' + s.modo);
+    return 'CH' + s.ch + '  ' + (s.mV / 1000).toFixed(3) + ' V  ' + (s.mA / 1000).toFixed(2) + ' A  R ' + s.ir +
+           ' mΩ  ' + stato + ' · ' + modo + (s.err ? '  errore ' + s.err : '');
+  });
+  if (box) box.textContent = lines.join('\n') + '\n\nRisposta grezza (' + f.length + ' byte):\n' + hex(f);
+  if (currentModel === 'octa') {
+    for (const s of slots) {
+      s.t = t;
+      samples.push(s);
+      if (samples.length > MAX_SAMPLES) samples.shift();
+      latest[s.ch] = s;
+      checkAlarms(s);
+    }
+    renderLatest();
+    if (performance.now() - lastDraw > 500) { lastDraw = performance.now(); drawAll(); }
+  }
 }
 
 function requestStatus() {
