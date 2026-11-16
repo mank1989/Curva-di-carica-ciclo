@@ -35,7 +35,7 @@
   .tab { display: none; }
   .tab.active { display: block; }
 
-  .group { background: var(--panel); border-radius: 12px; overflow: hidden; margin: 10px 0; }
+  .group { background: var(--panel); border-radius: 12px; overflow-x: auto; margin: 10px 0; }
   .group h3 { margin: 0; padding: 10px 14px 6px; font-size: 12px; font-weight: 500; color: var(--muted); }
   .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; border-top: 1px solid var(--line); min-height: 48px; }
   .group > .row:first-of-type { border-top: 0; }
@@ -106,8 +106,8 @@
   details.adv > summary::-webkit-details-marker { display: none; }
   details.adv > summary::after { content: "›"; color: var(--muted); font-size: 18px; transform: rotate(90deg); transition: transform .15s; }
   details.adv[open] > summary::after { transform: rotate(-90deg); }
-  .tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
-  .tbl th, .tbl td { text-align: left; padding: 8px 10px; border-top: 1px solid var(--line); }
+  .tbl { width: 100%; border-collapse: collapse; font-size: 12px; white-space: nowrap; }
+  .tbl th, .tbl td { text-align: left; padding: 7px 7px; border-top: 1px solid var(--line); }
   .tbl th { color: var(--muted); font-weight: 500; font-size: 11px; }
   .tbl td.dim { color: var(--dim); }
   .btns .btn { width: 100%; }
@@ -1146,14 +1146,14 @@ function renderCellBoard() {
   const rows = scoreCells(names.map(cellRow));
   const ranked = rows.filter(r => r.score !== null).sort((a, b) => b.score - a.score);
   const rest = rows.filter(r => r.score === null);
-  let html = '<div class="group" style="margin:0"><table class="tbl"><tr><th>Pila</th><th>Gare</th><th>Capacità</th><th>Energia</th><th>R int.</th><th>Caduta</th><th>Ripetib.</th><th>Punteggio</th></tr>';
+  const num = (x, d) => (isNum(x) ? x.toFixed(d).replace('.', ',') : '—');
+  let html = '<div class="group" style="margin:0"><table class="tbl"><tr><th>Pila</th><th>Gare</th><th>Capacità mAh</th><th>Energia mWh</th><th>R int. mΩ</th><th>Ripetib. %</th><th>Punteggio</th></tr>';
   for (const r of ranked.concat(rest)) {
     const cls = r === ranked[0] ? ' class="best"' : '';
     const rip = isNum(r.cvCap) ? r.cvCap : r.cv;
-    html += '<tr' + cls + '><td>' + esc(r.name) + '</td><td>' + r.n + '</td><td>' + unitStr(r.capGara, 0, ' mAh') +
-            '</td><td>' + unitStr(r.Energy * 1000, 1, ' mWh') + '</td><td>' + unitStr(r.Rint, 1, ' mΩ') +
-            '</td><td>' + unitStr(r.Vdrop, 0, ' mV') + '</td><td>' + unitStr(rip, 1, '%') + '</td><td>' +
-            (r.score === null ? '—' : r.score + '/100') + '</td></tr>';
+    html += '<tr' + cls + '><td>' + esc(r.name) + '</td><td>' + r.n + '</td><td>' + num(r.capGara, 0) +
+            '</td><td>' + num(r.Energy * 1000, 1) + '</td><td>' + num(r.Rint, 1) +
+            '</td><td>' + num(rip, 1) + '</td><td>' + (r.score === null ? '—' : r.score + '/100') + '</td></tr>';
   }
   html += '</table></div>';
   if (ranked.length >= 2) {
@@ -1750,7 +1750,7 @@ function renderLatest() {
            '<div class="metrics">' +
            '<div><b>' + corrente + '</b><small>corrente</small></div>' +
            '<div><b>' + s.cap + '</b><small>capacità mAh</small></div>' +
-           '<div><b>' + (s.dV ? s.dV : '—') + '</b><small>temperatura</small></div>' +
+           '<div><b>' + (s.dV > 0 ? s.dV + ' °C' : '—') + '</b><small>temperatura</small></div>' +
            '</div>' +
            '<div class="sub">' + stato + ' · ' + modo + '</div></div>';
   }).join('');
