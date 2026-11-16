@@ -178,6 +178,14 @@
   <!-- PROGRAMMA -->
   <section id="tab-program" class="tab">
     <div class="group">
+      <h3>Profilo pila</h3>
+      <div class="row"><label>Profilo salvato</label><div class="val"><select id="presetSel"></select></div></div>
+      <div class="row"><label>Nome nuovo profilo</label><div class="val"><input type="text" id="presetName" placeholder="es. Neo Champ 950"></div></div>
+      <div class="btns two" style="padding:6px 14px 12px"><button id="btnPresetLoad" class="btn ghost">Carica profilo</button><button id="btnPresetSave" class="btn ghost">Salva come profilo</button></div>
+      <div class="btns two" style="padding:0 14px 12px"><button id="btnPresetDelete" class="btn ghost">Elimina profilo</button><span></span></div>
+      <p id="presetHint" class="hint" style="padding:0 14px 12px">Il profilo salva carica, scarica, cicli e protezioni. L'uscita non fa parte del profilo.</p>
+    </div>
+    <div class="group">
       <h3>Modalità</h3>
       <div class="modes">
         <button type="button" data-mode="0">Carica</button>
@@ -1792,7 +1800,8 @@ function buildBackup() {
     capacity: loadCap(),
     names: readJSON(NAMES_KEY, {}),
     alarm: readJSON(ALARM_KEY, {}),
-    ui: readJSON('nc3000_ui_v2', {})
+    ui: readJSON('nc3000_ui_v2', {}),
+    presets: readPresets()
   };
 }
 
@@ -1830,7 +1839,16 @@ function importBackupText(text) {
   if (b.names) writeJSON(NAMES_KEY, b.names);
   if (b.alarm) writeJSON(ALARM_KEY, b.alarm);
   if (b.ui) writeJSON('nc3000_ui_v2', b.ui);
-  return 'Backup importato: ' + added + ' gare nuove, ' + capAdded + ' letture di capacità nuove';
+  let presAdded = 0;
+  if (b.presets && typeof b.presets === 'object') {
+    const mine = readPresets();
+    for (const n of Object.keys(b.presets)) {
+      if (!Object.prototype.hasOwnProperty.call(mine, n)) { mine[n] = b.presets[n]; presAdded++; }
+    }
+    writePresets(mine);
+    renderPresetList();
+  }
+  return 'Backup importato: ' + added + ' gare nuove, ' + capAdded + ' letture di capacità nuove, ' + presAdded + ' profili nuovi';
 }
 
 function onBackupFile(input) {
@@ -1853,6 +1871,77 @@ function onBackupFile(input) {
 $('btnBackupExport').onclick = exportBackup;
 $('bkFile').addEventListener('change', e => onBackupFile(e.target));
 renderCellBoard();
+
+/* ===================== PROFILI PILA ===================== */
+const PRESET_KEY = 'nc3000_presets_v1';
+// campi del programma salvati in un profilo; l'uscita (p_position) non fa parte del profilo
+const PRESET_FIELDS = ['capacity', 'chargeE', 'dischargeE', 'inStopCurrent', 'inStopVoltage', 'outStopCurrent',
+  'outStopVoltage', 'inTimeProtect', 'chargeRestTime', 'dischargeRestTime', 'detalV', 'cycleMode', 'cycleCount',
+  'truboMode', 'tempProtect', 'inMaxbostCapacity', 'track', 'restartVolt'];
+
+function readPresets() { return readJSON(PRESET_KEY, {}); }
+function writePresets(o) { writeJSON(PRESET_KEY, o); }
+
+function presetFromForm() {
+  const values = {};
+  for (const k of PRESET_FIELDS) {
+    const el = $('p_' + k);
+    if (el) values[k] = el.value;
+  }
+  return { mode: currentMode, values, saved: new Date().toLocaleDateString('it-IT') };
+}
+
+function renderPresetList(selected) {
+  const sel = $('presetSel');
+  if (!sel) return;
+  const all = readPresets();
+  const names = Object.keys(all).sort((a, b) => a.localeCompare(b, 'it'));
+  sel.innerHTML = names.length
+    ? names.map(n => '<option value="' + esc(n) + '"' + (n === selected ? ' selected' : '') + '>' +
+        esc(n) + ' · ' + esc(MODE_NAME[all[n].mode] || ('modo ' + all[n].mode)) + '</option>').join('')
+    : '<option value="">(nessun profilo)</option>';
+}
+
+function savePreset() {
+  const name = ($('presetName').value || '').trim();
+  if (!name) { $('presetHint').textContent = 'Scrivi un nome per il profilo.'; return; }
+  const all = readPresets();
+  const existed = Object.prototype.hasOwnProperty.call(all, name);
+  all[name] = presetFromForm();
+  writePresets(all);
+  renderPresetList(name);
+  $('presetName').value = '';
+  $('presetHint').textContent = (existed ? 'Profilo aggiornato: ' : 'Profilo salvato: ') + name + '.';
+}
+
+function loadPreset() {
+  const name = $('presetSel').value;
+  const p = readPresets()[name];
+  if (!p) { $('presetHint').textContent = 'Seleziona un profilo.'; return; }
+  for (const k of PRESET_FIELDS) {
+    const el = $('p_' + k);
+    if (el && p.values && p.values[k] !== undefined) el.value = p.values[k];
+  }
+  if (typeof p.mode === 'number') setMode(p.mode);
+  saveParams();
+  renderPreview();
+  $('presetHint').textContent = 'Profilo caricato: ' + name + '. Controlla i valori prima di avviare.';
+}
+
+function deletePreset() {
+  const name = $('presetSel').value;
+  const all = readPresets();
+  if (!all[name]) { $('presetHint').textContent = 'Seleziona un profilo.'; return; }
+  delete all[name];
+  writePresets(all);
+  renderPresetList();
+  $('presetHint').textContent = 'Profilo eliminato: ' + name + '.';
+}
+
+$('btnPresetSave').onclick = savePreset;
+$('btnPresetLoad').onclick = loadPreset;
+$('btnPresetDelete').onclick = deletePreset;
+renderPresetList();
 
 (function splash() {
   const s = document.getElementById('splash');
