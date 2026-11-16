@@ -961,7 +961,12 @@ function computeRun(r) {
     const Imeas = hasI ? avg(seg.filter(p => p.i !== null && p.i > 0).map(p => p.i)) : null;
     const capStart = pre && isNum(pre.cap) ? pre.cap : (seg.find(p => isNum(p.cap)) || {}).cap;
     const capEnd = [...seg].reverse().find(p => isNum(p.cap));
-    const capGara = isNum(capStart) && capEnd ? counterDelta(capStart, capEnd.cap) : null;  // mAh erogati in gara
+    const capCount = isNum(capStart) && capEnd ? counterDelta(capStart, capEnd.cap) : null; // contatore: non usato come delta
+    let qA = 0;
+    for (let k = 1; k < seg.length; k++) {
+      if (seg[k].i !== null && seg[k - 1].i !== null) qA += (seg[k].i + seg[k - 1].i) / 2 * (seg[k].x - seg[k - 1].x);
+    }
+    const capGara = hasI ? qA * 1000 / 3600 : null;   // mAh erogati in gara = integrale della corrente misurata
     const v2 = avg(seg.filter(p => p.x >= 1.5 && p.x <= 2.5).map(p => p.y)) ?? seg[0].y;
     const vend = avg(seg.filter(p => p.x >= r.N - 1).map(p => p.y)) ?? seg[seg.length - 1].y;
     const Vdrop = restV !== null ? (restV - v2) * 1000 : null;                              // caduta iniziale (mV)
@@ -974,7 +979,7 @@ function computeRun(r) {
     run.cells[ch] = {
       name, n: seg.length,
       Vmean: avg(seg.map(p => p.y)), Vend: vend, Vrest: restV, Vdrop,
-      Energy: energy, EnergyM: energyM, Imeas, capGara,
+      Energy: energy, EnergyM: energyM, Imeas, capGara, capCount,
       Rint, IRch,
       Tstart: tcs.length ? tcs[0] : null,
       dT: tcs.length >= 2 ? tcs[tcs.length - 1] - tcs[0] : null,
@@ -1147,7 +1152,7 @@ function renderCellBoard() {
   const ranked = rows.filter(r => r.score !== null).sort((a, b) => b.score - a.score);
   const rest = rows.filter(r => r.score === null);
   const num = (x, d) => (isNum(x) ? x.toFixed(d).replace('.', ',') : '—');
-  let html = '<div class="group" style="margin:0"><table class="tbl"><tr><th>Pila</th><th>Gare</th><th>Capacità mAh</th><th>Energia mWh</th><th>R int. mΩ</th><th>Ripetib. %</th><th>Punteggio</th></tr>';
+  let html = '<div class="group" style="margin:0"><table class="tbl"><tr><th>Pila</th><th>Gare</th><th>Erogata mAh</th><th>Energia mWh</th><th>R int. mΩ</th><th>Ripetib. %</th><th>Punteggio</th></tr>';
   for (const r of ranked.concat(rest)) {
     const cls = r === ranked[0] ? ' class="best"' : '';
     const rip = isNum(r.cvCap) ? r.cvCap : r.cv;
