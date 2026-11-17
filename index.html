@@ -588,7 +588,8 @@ function handleFrame(f) {
     mA: be(4),                                                   // corrente, mA
     ir: be(16),                                                  // resistenza interna, mΩ
     cap: be(10),                                                 // capacità della fase, mAh
-    dV: be(8),                                                   // −ΔV in mV (byte 8–9), come nella tabella Octa/Pro
+    dV: f[9],                                                    // −ΔV in mV (byte 9; il firmware manda un solo byte)
+    tempC: f[8] || null,                                         // byte 8: sempre 0 col firmware originale, °C del canale col firmware modificato
     counter: ((f[12] << 24) >>> 0) + (f[13] << 16) + (f[14] << 8) + f[15], // tempo, s
     stato: f[18],                                                // 2 carica, 3 scarica, 4 riposo, 5/6 completato
     modo: f[19],                                                 // 0 carica, 1 scarica, 3 ciclo, 4 MaxBoost, 5 turbo
@@ -1046,7 +1047,7 @@ function unitStr(v, d, unit) { return isNum(v) ? fmt(v, d) + unit : '—'; }
 
 // temperatura: nei pacchetti non è presente (byte 8–9 = −ΔV)
 function tempOf(s) {
-  if (isNum(s.tempC) && s.tempC > 0) return s.tempC; // i pacchetti NC3000 non contengono la temperatura: resta null
+  if (isNum(s.tempC) && s.tempC > 0) return s.tempC; // presente solo con il firmware modificato (byte 8 del pacchetto)
   return null;
 }
 
@@ -1916,6 +1917,7 @@ function renderLatest() {
            '<div class="metrics">' +
            '<div><b>' + corrente + '</b><small>corrente</small></div>' +
            '<div><b>' + s.cap + '</b><small>capacità mAh</small></div>' +
+           (tempOf(s) !== null ? '<div><b>' + tempOf(s) + ' °C</b><small>temperatura</small></div>' : '') +
            '<div><b>' + (s.dV > 0 ? s.dV : '—') + '</b><small>−ΔV mV</small></div>' +
            '</div>' +
            '<div class="sub">' + stato + ' · ' + modo + '</div></div>';
