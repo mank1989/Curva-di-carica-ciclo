@@ -1103,7 +1103,7 @@ function computeRun(r) {
     run.cells[ch] = {
       name, n: seg.length,
       Vmean: avg(seg.map(p => p.y)), Vend: vend, Vrest: restV, Vdrop,
-      Energy: energy, EnergyM: energyM, Imeas, capGara, capCount,
+      Energy: (energyM !== null ? energyM : energy), Eset: energy, EnergyM: energyM, Emeas: energyM !== null, Imeas, capGara, capCount,
       Rint, IRch, IRrest: restIR,
       Tstart: tcs.length ? tcs[0] : null,
       dT: tcs.length >= 2 ? tcs[tcs.length - 1] - tcs[0] : null,
@@ -1848,9 +1848,10 @@ function buildRaceReportHtml(run) {
   const ranking = cells.slice().sort((a, b) => b.Energy - a.Energy);
   let body = '<h1>Report gara</h1><p class="meta">' + esc(run.date) + ' · durata ' + run.N + ' s · scarica ' +
              fmt(run.I, 2) + ' A</p>';
-  body += '<h2>Risultati</h2><table><tr><th>Pila</th><th>Energia</th><th>V media</th><th>V fine</th><th>R interna</th></tr>';
+  body += '<h2>Risultati</h2><table><tr><th>Pila</th><th>Energia</th><th>I media</th><th>V media</th><th>V fine</th><th>R interna</th></tr>';
   for (const c of cells) {
-    body += '<tr><td>' + esc(c.name) + '</td><td>' + fmt(c.Energy * 1000, 1) + ' mWh</td><td>' + fmt(c.Vmean, 3) +
+    const iStr = isNum(c.Imeas) ? fmt(c.Imeas, 2) + ' A' : fmt(run.I, 2) + ' A (imp.)';
+    body += '<tr><td>' + esc(c.name) + '</td><td>' + fmt(c.Energy * 1000, 1) + ' mWh</td><td>' + iStr + '</td><td>' + fmt(c.Vmean, 3) +
             ' V</td><td>' + fmt(c.Vend, 3) + ' V</td><td>' + fmt(c.Rint, 1) + ' mΩ</td></tr>';
   }
   body += '</table>';
@@ -1865,10 +1866,11 @@ function buildRaceReportHtml(run) {
   }
   pairs.sort((x, y) => (y.sim ?? -1) - (x.sim ?? -1));
   if (pairs.length) {
-    body += '<h2>Somiglianza</h2><table><tr><th>Coppia</th><th>Somiglianza</th><th>ΔV</th><th>ΔEnergia</th><th>ΔR</th></tr>';
+    body += '<h2>Somiglianza</h2><table><tr><th>Coppia</th><th>Somiglianza</th><th>Δ Curva</th><th>Δ Capacità</th><th>Δ R</th></tr>';
     pairs.forEach((p, i) => {
       body += '<tr' + (i === 0 ? ' class="best"' : '') + '><td>' + esc(p.a) + ' · ' + esc(p.b) + '</td><td>' + fmt(p.sim, 1) +
-              '%</td><td>' + fmt(p.dV, 1) + ' mV</td><td>' + fmt(p.dE, 1) + '%</td><td>' +
+              '%</td><td>' + (p.dCurva === null ? '—' : fmt(p.dCurva, 0) + ' mV') + '</td><td>' +
+              (p.dCap === null ? '—' : fmt(p.dCap, 0) + ' mAh') + '</td><td>' +
               (p.dR === null ? '—' : fmt(p.dR, 1) + ' mΩ') + '</td></tr>';
     });
     body += '</table><p><b>Coppia consigliata:</b> ' + esc(pairs[0].a) + ' + ' + esc(pairs[0].b) +
@@ -1899,9 +1901,10 @@ function buildRaceReportHtml(run) {
     body += '<h2>Curve di tensione</h2>' + svg;
     body += '<p class="note">Legenda: ' + cells.map(c => '<span style="color:' + REPORT_COLORS[c.ch] + '">' + esc(c.name) + '</span>').join(' · ') + '</p>';
   }
-  body += '<p class="note">Energia = integrale della tensione nel tempo di gara × corrente di scarica impostata (non misurata). ' +
+  body += '<p class="note">Energia = integrale di tensione × corrente, con la corrente MISURATA dal caricabatterie istante per istante (se per una pila la corrente non è disponibile si usa quella impostata). ' +
           'R interna = misurata dal caricabatterie (media durante la gara). ' +
-          'Somiglianza = media, su tensione media, energia e resistenza, di 100% meno lo scarto relativo tra due pile.</p>';
+          'Somiglianza = confronto pesato di: forma della curva di tensione sotto carico (la voce che pesa di più), capacità erogata, resistenza interna, tensione a riposo. ' +
+          'Δ Curva = differenza media della tensione tra le due pile durante la gara (più è bassa, più vanno uguali).</p>';
   return htmlWrap('Report gara ' + run.date, body);
 }
 
