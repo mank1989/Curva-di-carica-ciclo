@@ -161,7 +161,8 @@
 
   <!-- MONITOR -->
   <section id="tab-monitor" class="tab active">
-    <div class="row" style="margin:8px 0"><label>Caricabatterie</label><div class="val"><select id="modelSel"><option value="pro">NC3000 Pro · 4 canali</option><option value="octa">NC3000 Octa · 8 canali</option></select></div></div>
+    <div class="row" style="margin:8px 0"><label>Caricabatterie</label><div class="val"><span id="modelName" class="hint">Rilevato alla connessione</span></div></div>
+    <div id="modelPick" class="btns two" style="display:none;margin-top:4px"><button id="btnPickPro" class="btn ghost">È un NC3000 Pro (4 canali)</button><button id="btnPickOcta" class="btn ghost">È un Octa (8 canali)</button></div>
     <div class="btns two" style="margin-top:10px">
       <button id="btnConnect" class="btn">Connetti</button>
       <button id="btnPoll" class="btn ghost" disabled>Avvia letture</button>
@@ -686,7 +687,7 @@ function startPolling() {
     pollTimer = setInterval(() => { try { enqueue(CMD_STATUS_OCTA, [0x00], '0x9A'); } catch (e) { addLog(e.message); } }, 1000);
     beatTimer = setInterval(() => { try { enqueue(CMD_HEARTBEAT, [0x00], '0xEE'); } catch (e) { addLog(e.message); } }, 3000);
     $('btnPoll').disabled = true;
-    $('status').textContent = 'Letture Octa (grezze)';
+    $('status').textContent = MODEL_DEF.octa.label + ' · letture in corso';
     return;
   }
   maskIdx = 0;
@@ -698,7 +699,7 @@ function startPolling() {
     try { enqueue(CMD_HEARTBEAT, [0x00], '0xEE'); } catch (e) { addLog(e.message); }
   }, 3000);
   $('btnPoll').disabled = true;
-  $('status').textContent = 'Letture in corso';
+  $('status').textContent = MODEL_DEF[currentModel].label + ' · letture in corso';
 }
 
 function stopPolling() {
@@ -726,9 +727,9 @@ function isLinked() {
 
 function setConnected(on) {
   keepAwake(on);
-  $('modelSel').disabled = on;
   $('btnConnect').disabled = on;
   $('btnPoll').disabled = !on;
+  if (!on) { $('modelPick').style.display = 'none'; $('btnPoll').textContent = 'Avvia letture'; }
   $('btnDisc').disabled = !on;
   $('btnExport').disabled = !on;
   $('btnStopCh').disabled = !on;
@@ -774,7 +775,7 @@ async function connect() {
     $('status').textContent = 'Connesso a ' + (device.name || 'dispositivo');
     addLog('Connesso. Notifiche attive.');
     setConnected(true);
-    setTimeout(requestModel, 300); // legge il modello e imposta i canali
+    setTimeout(startDetection, 300); // rileva il modello e imposta i canali da solo
   } catch (e) {
     const msg = e.message || '';
     if (/cancel/i.test(msg)) {
@@ -1112,22 +1113,100 @@ function computeRun(r) {
   return run;
 }
 
-// somiglianza di una coppia su più misure; ogni misura disponibile pesa allo stesso modo
+/* ===================== SOMIGLIANZA FRA PILE =====================
+   In gara conta che due pile diano la STESSA tensione sotto carico per tutta
+   la durata. Perciò il peso maggiore va alla forma della curva di tensione
+   (confrontata punto per punto), poi alla capacità erogata, alla resistenza
+   interna e alla tensione a riposo (stesso stato di partenza). Energia e
+   tensione media non sono voci a sé: sono già dentro la curva e la capacità,
+   e contarle due volte falserebbe il punteggio. */
+
+// riscalatura di una curva [[x,y]] su K punti equidistanti in [0, dur] (interpolazione lineare)
+function resampleCurve(curve, dur, K) {
+  if (!curve || curve.length < 2 || !(dur > 0)) return null;
+  const out = []; let j = 0;
+  for (let k = 0; k < K; k++) {
+    const x = dur * k / (K - 1);
+    while (j < curve.length - 2 && curve[j + 1][0] < x) j++;
+    const x0 = curve[j][0], x1 = curve[j + 1][0], y0 = curve[j][1], y1 = curve[j + 1][1];
+    const f = x1 === x0 ? 0 : (x - x0) / (x1 - x0);
+    out.push(y0 + (y1 - y0) * Math.max(0, Math.min(1, f)));
+  }
+  return out;
+}
+
+// scarto quadratico medio (mV) fra due curve di tensione, sulla finestra comune
+function curveRms(c1, c2) {
+  if (!c1 || !c2 || c1.length < 2 || c2.length < 2) return null;
+  const dur = Math.min(c1[c1.length - 1][0], c2[c2.length - 1][0]);
+  const K = 48;
+  const a = resampleCurve(c1, dur, K), b = resampleCurve(c2, dur, K);
+  if (!a || !b) return null;
+  let s = 0;
+  for (let k = 0; k < K; k++) { const d = (a[k] - b[k]) * 1000; s += d * d; }
+  return Math.sqrt(s / K);
+}
+
+// punteggio morbido: 100 a differenza nulla, ~60,7 a differenza = tolleranza, scende senza scalini
+function gauss(delta, tol) { return 100 * Math.exp(-0.5 * (delta / tol) * (delta / tol)); }
+function relGauss(a, b, tol) {
+  const m = (Math.abs(a) + Math.abs(b)) / 2;
+  return m ? gauss(Math.abs(a - b) / m, tol) : (a === b ? 100 : 0);
+}
+
+// voci del confronto: tol = differenza a cui il punteggio della voce scende a ~60%
+const SIM_METRICS = [
+  { key: 'Curva',      w: 0.40, tol: 20,   type: 'curve' },          // RMS tensione sotto carico (mV)
+  { key: 'Capacità',   w: 0.30, tol: 0.04, type: 'rel',  f: 'capGara' },
+  { key: 'Resistenza', w: 0.18, tol: 0.15, type: 'rel',  f: 'Rint' },
+  { key: 'Riposo',     w: 0.12, tol: 15,   type: 'absV', f: 'Vrest' } // tensione a riposo (mV)
+];
+
 function pairScore(c1, c2) {
   const parts = {};
-  const both = (a, b) => isNum(a) && isNum(b);
-  const put = (k, a, b) => { if (both(a, b)) parts[k] = simPct(a, b); };
-  put('Capacità', c1.capGara, c2.capGara);
-  if (both(c1.EnergyM, c2.EnergyM)) put('Energia', c1.EnergyM, c2.EnergyM);
-  else put('Energia', c1.Energy, c2.Energy);
-  put('Resistenza', c1.Rint, c2.Rint);
-  if (both(c1.Vdrop, c2.Vdrop)) {
-    parts['Caduta'] = (Math.abs(c1.Vdrop) < 5 && Math.abs(c2.Vdrop) < 5)
-      ? 100 : simPct(Math.abs(c1.Vdrop), Math.abs(c2.Vdrop));
+  for (const m of SIM_METRICS) {
+    let sc = null;
+    if (m.type === 'curve') {
+      if (c1.curve && c2.curve) { const r = curveRms(c1.curve, c2.curve); if (r !== null) sc = gauss(r, m.tol); }
+    } else if (isNum(c1[m.f]) && isNum(c2[m.f])) {
+      sc = m.type === 'rel' ? relGauss(c1[m.f], c2[m.f], m.tol) : gauss(Math.abs(c1[m.f] - c2[m.f]) * 1000, m.tol);
+    }
+    if (sc !== null) parts[m.key] = sc;
   }
-  put('Tensione media', c1.Vmean, c2.Vmean);
-  const vals = Object.values(parts);
-  return { sim: vals.length ? avg(vals) : null, parts };
+  let num = 0, den = 0;
+  for (const m of SIM_METRICS) if (parts[m.key] !== undefined) { num += m.w * parts[m.key]; den += m.w; }
+  return { sim: den ? num / den : null, parts };
+}
+
+// accoppiamento ottimale di tutte le pile: minimizza la dissomiglianza totale (forza bruta, fino a ~8 pile)
+function bestPairing(cells) {
+  const n = cells.length;
+  if (n < 2) return null;
+  const cache = {};
+  const simOf = (i, j) => {
+    const k = i < j ? i + '_' + j : j + '_' + i;
+    if (cache[k] === undefined) { const s = pairScore(cells[i], cells[j]).sim; cache[k] = (s === null ? 0 : s); }
+    return cache[k];
+  };
+  let best = null;
+  const search = (remaining, pairs, cost, leftout) => {
+    if (best && cost >= best.cost) return;
+    if (remaining.length < 2) { if (!best || cost < best.cost) best = { cost, pairs: pairs.slice(), leftout }; return; }
+    const a = remaining[0];
+    for (let t = 1; t < remaining.length; t++) {
+      const b = remaining[t];
+      const rest = remaining.filter((_, u) => u !== 0 && u !== t);
+      search(rest, pairs.concat([[a, b]]), cost + (100 - simOf(a, b)), leftout);
+    }
+  };
+  const idx = cells.map((_, i) => i);
+  if (n % 2 === 0) search(idx, [], 0, null);
+  else for (let out = 0; out < n; out++) search(idx.filter(i => i !== out), [], 0, out);
+  if (!best) return null;
+  return {
+    pairs: best.pairs.map(([i, j]) => ({ a: cells[i].name, b: cells[j].name, sim: simOf(i, j) })).sort((x, y) => y.sim - x.sim),
+    leftover: best.leftout != null ? cells[best.leftout].name : null
+  };
 }
 
 function similarity(c1, c2) { return pairScore(c1, c2).sim; }
@@ -1136,7 +1215,8 @@ function pairDetail(c1, c2) {
   const sc = pairScore(c1, c2);
   return {
     sim: sc.sim, parts: sc.parts,
-    dV: Math.abs(c1.Vmean - c2.Vmean) * 1000,
+    dCurva: (c1.curve && c2.curve) ? curveRms(c1.curve, c2.curve) : null,
+    dV: (isNum(c1.Vmean) && isNum(c2.Vmean)) ? Math.abs(c1.Vmean - c2.Vmean) * 1000 : null,
     dE: (isNum(c1.Energy) && isNum(c2.Energy) && (c1.Energy + c2.Energy) !== 0)
       ? Math.abs(c1.Energy - c2.Energy) / ((c1.Energy + c2.Energy) / 2) * 100 : null,
     dR: (isNum(c1.Rint) && isNum(c2.Rint)) ? Math.abs(c1.Rint - c2.Rint) : null,
@@ -1253,18 +1333,26 @@ function renderRaceSim(run) {
     pairs.push(Object.assign({ a: a.name, b: b.name }, pairDetail(a, b)));
   }
   pairs.sort((x, y) => (y.sim ?? 0) - (x.sim ?? 0));
-  let html = '<div class="group" style="margin:0"><table class="tbl"><tr><th>Coppia</th><th>Somiglianza</th><th>Δ Capacità</th><th>Δ Energia</th><th>Δ R</th><th>Δ Caduta</th><th>Δ Riposo</th></tr>';
+  let html = '<div class="group" style="margin:0"><table class="tbl"><tr><th>Coppia</th><th>Somiglianza</th><th>Δ Curva</th><th>Δ Capacità</th><th>Δ R</th><th>Δ Riposo</th></tr>';
   pairs.forEach((p, i) => {
     const warn = isNum(p.dRest) && p.dRest > 5 ? ' class="warnc"' : '';
     html += '<tr' + (i === 0 ? ' class="best"' : '') + '><td>' + esc(p.a) + ' · ' + esc(p.b) + '</td><td><b>' + unitStr(p.sim, 1, '%') +
-            '</b></td><td>' + unitStr(p.dCap, 0, ' mAh') + '</td><td>' + unitStr(p.dE, 1, '%') + '</td><td>' + unitStr(p.dR, 1, ' mΩ') +
-            '</td><td>' + unitStr(p.dDrop, 0, ' mV') + '</td><td' + warn + '>' + unitStr(p.dRest, 0, ' mV') + '</td></tr>';
+            '</b></td><td>' + unitStr(p.dCurva, 0, ' mV') + '</td><td>' + unitStr(p.dCap, 0, ' mAh') + '</td><td>' + unitStr(p.dR, 1, ' mΩ') +
+            '</td><td' + warn + '>' + unitStr(p.dRest, 0, ' mV') + '</td></tr>';
   });
   html += '</table></div>';
+  // accoppiamento ottimale di tutte le pile (non solo la coppia migliore)
+  const cellObjs = ok.map(ch => Object.assign({ name: run.cells[ch].name }, run.cells[ch]));
+  const grp = bestPairing(cellObjs);
+  if (grp && grp.pairs.length) {
+    html += '<p class="hint">Accoppiamento consigliato: ' +
+      grp.pairs.map(p => '<b>' + esc(p.a) + ' + ' + esc(p.b) + '</b> (' + fmt(p.sim, 0) + '%)').join(' · ') +
+      (grp.leftover ? ' · spaiata: <b>' + esc(grp.leftover) + '</b>' : '') + '</p>';
+  }
   const best = pairs[0];
-  html += '<p class="hint">Coppia consigliata: <b>' + esc(best.a) + ' + ' + esc(best.b) + '</b> (' + unitStr(best.sim, 1, '%') + ')</p>';
+  html += '<p class="hint">Δ Curva = differenza media della tensione sotto carico (più è bassa, più le pile vanno uguali in gara).</p>';
   if (isNum(best.dRest) && best.dRest > 5) {
-    html += '<p class="hint warnc">Attenzione: la tensione a riposo differisce di ' + fmt(best.dRest, 0) + ' mV. Prima della gara conviene riportarle allo stesso stato.</p>';
+    html += '<p class="hint warnc">Attenzione: la coppia migliore ha la tensione a riposo diversa di ' + fmt(best.dRest, 0) + ' mV. Prima della gara conviene riportarle allo stesso stato.</p>';
   }
   $('raceSim').innerHTML = html;
 }
@@ -1785,6 +1873,12 @@ function buildRaceReportHtml(run) {
     });
     body += '</table><p><b>Coppia consigliata:</b> ' + esc(pairs[0].a) + ' + ' + esc(pairs[0].b) +
             ' (somiglianza ' + fmt(pairs[0].sim, 1) + '%)</p>';
+    const grp = bestPairing(cells);
+    if (grp && grp.pairs.length > 1) {
+      body += '<p><b>Accoppiamento di tutte le pile:</b> ' +
+        grp.pairs.map(p => esc(p.a) + ' + ' + esc(p.b) + ' (' + fmt(p.sim, 0) + '%)').join(' · ') +
+        (grp.leftover ? ' · spaiata: ' + esc(grp.leftover) : '') + '</p>';
+    }
   }
   // grafico delle curve
   const W = 700, H = 280, L = 44, R = 690, T = 16, B = 250;
@@ -2264,6 +2358,7 @@ function sendInfoTry() {
     box.textContent = 'Nessuna risposta dal caricabatterie dopo ' + tot + ' tentativi (' +
       infoTries.map(t => t.name).join(', ') + ').\n' +
       'Nel Registro cerca le righe "TX INFO": mostrano cosa è stato inviato. Se ci sono ma non arriva risposta, manda lo screenshot del Registro.';
+    if (detecting) probeOcta(null); // durante il rilevamento automatico passo alla prova di stato
   }, INFO_TIMEOUT_MS);
 }
 
@@ -2326,6 +2421,10 @@ function handleStatusFrame(f) {
     return;
   }
   rxOk++; $('rxok').textContent = rxOk;
+  if (octaProbing) { // una risposta di stato valida = è un Octa
+    octaProbing = false; clearTimeout(octaProbeTimer);
+    detectionDone('octa', 'Rilevato ' + MODEL_DEF.octa.label + ' (dalla risposta di stato)');
+  }
   const lines = slots.map(s => {
     const stato = STATO_LABEL[s.stato] || ('stato ' + s.stato);
     const modo = MODE_LABEL[s.modo] || ('modo ' + s.modo);
@@ -2378,7 +2477,6 @@ function buildChannelUI() {
 function applyModel(m) {
   currentModel = MODEL_DEF[m] ? m : 'pro';
   CHANNELS = Array.from({ length: MODEL_DEF[currentModel].n }, (_, i) => i + 1);
-  $('modelSel').value = currentModel;
   try { localStorage.setItem(MODEL_KEY, currentModel); } catch (e) { /* ignora */ }
   buildChannelUI();
   renderLatest();
@@ -2386,34 +2484,75 @@ function applyModel(m) {
   $('status').textContent = MODEL_DEF[currentModel].label;
 }
 
-$('modelSel').onchange = () => {
-  if (device && device.gatt && device.gatt.connected) {
-    $('modelSel').value = currentModel;
-    addLog('Disconnetti prima di cambiare modello');
-    return;
-  }
-  applyModel($('modelSel').value);
-};
-
 applyModel(localStorage.getItem(MODEL_KEY) || 'pro');
 
 /* ===================== RILEVAMENTO AUTOMATICO DEL MODELLO ===================== */
-// codice modello -> modello della pagina. 100228 è il codice dell'Octa, letto dal caricatore dell'amico.
+// Alla connessione la app riconosce da sola il modello e imposta i canali:
+//  1) legge il codice modello (0x57): 100209 = Pro (4 canali), 100228 = Octa (8 canali);
+//  2) se il codice non arriva o è sconosciuto, prova una lettura di stato 0x9A (sola lettura):
+//     solo un vero Octa risponde con 142 byte validi;
+//  3) se non risponde nulla, imposta il Pro e mostra un tastino per correggere a mano.
 const MODEL_BY_CODE = { '100209': 'pro', '100228': 'octa' };
+let detecting = false, octaProbing = false, octaProbeTimer = null;
 
+function setPollReady(ready, note) {
+  const b = $('btnPoll');
+  b.disabled = !ready;
+  b.textContent = ready ? 'Avvia letture' : 'Rilevamento modello…';
+  if (note) $('status').textContent = note;
+}
+
+// avvio del rilevamento, chiamato da connect()
+function startDetection() {
+  if (!isLinked()) return;
+  detecting = true; octaProbing = false;
+  clearTimeout(octaProbeTimer);
+  $('modelPick').style.display = 'none';
+  setPollReady(false, 'Rilevamento del modello in corso…');
+  requestModel();
+}
+
+// esito del rilevamento: applica il modello, aggiorna l'etichetta e riabilita le letture
+function detectionDone(model, note) {
+  detecting = false; octaProbing = false;
+  clearTimeout(octaProbeTimer);
+  if (model) {
+    const changed = model !== currentModel;
+    applyModel(model);
+    const mn = $('modelName'); if (mn) mn.textContent = MODEL_DEF[currentModel].label;
+    if (changed && pollTimer) { stopPolling(); startPolling(); } // riparte col protocollo giusto
+  }
+  if (note) $('status').textContent = note;
+  if (isLinked()) startPolling(); // letture automatiche appena riconosciuto il modello
+}
+
+// risposta al comando 0x57 (codice modello)
 function applyDetected(code) {
-  if (!code) return;
-  const m = MODEL_BY_CODE[code];
+  const m = code ? MODEL_BY_CODE[code] : null;
   if (m) {
-    const changed = m !== currentModel;
-    applyModel(m);
-    // se le letture sono già attive, il polling riparte con il protocollo del modello rilevato
-    if (changed && pollTimer) { stopPolling(); startPolling(); }
-    $('status').textContent = 'Rilevato ' + MODEL_DEF[m].label + ' (codice ' + code + ')';
-  } else {
-    $('status').textContent = 'Codice ' + code + ' non riconosciuto: scegli il modello nel menu';
+    detectionDone(m, 'Rilevato ' + MODEL_DEF[m].label + ' (codice ' + code + ')');
+  } else if (detecting) {
+    probeOcta(code); // codice assente o sconosciuto: verifico dallo stato
   }
 }
+
+// rilevamento di riserva: una lettura di stato 0x9A, in sola lettura (solo l'Octa risponde valido)
+function probeOcta(code) {
+  octaProbing = true;
+  clearTimeout(octaProbeTimer);
+  $('status').textContent = (code ? 'Codice ' + code + ' non in elenco' : 'Modello non letto') +
+    ': verifico con una lettura di stato…';
+  sendSafe(CMD_STATUS_OCTA, [0x00], 'rilevamento 0x9A');
+  octaProbeTimer = setTimeout(() => {
+    if (!octaProbing) return;
+    octaProbing = false;
+    detectionDone('pro', 'Modello non riconosciuto: imposto ' + MODEL_DEF.pro.label + '. Se è un Octa, toccalo qui sotto.');
+    $('modelPick').style.display = '';
+  }, 2500);
+}
+
+$('btnPickPro').onclick = () => { $('modelPick').style.display = 'none'; detectionDone('pro', 'Impostato ' + MODEL_DEF.pro.label); };
+$('btnPickOcta').onclick = () => { $('modelPick').style.display = 'none'; detectionDone('octa', 'Impostato ' + MODEL_DEF.octa.label); };
 
 (function splash() {
   const s = document.getElementById('splash');
