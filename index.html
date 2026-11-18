@@ -221,7 +221,7 @@
       <h3>Parametri</h3>
       <div class="row" data-modes="0 3"><label>Capacità</label><div class="val"><input type="number" id="p_capacity" value="950" inputmode="numeric"><span class="unit">mAh</span></div></div>
       <div class="row" data-modes="0 3"><label>Carica a</label><div class="val"><input type="number" id="p_chargeE" value="0.50" step="0.05" inputmode="decimal"><span class="unit">A</span></div></div>
-      <div class="row" data-modes="1 3"><label>Scarica a</label><div class="val"><input type="number" id="p_dischargeE" value="2.50" step="0.05" inputmode="decimal"><span class="unit">A</span></div></div>
+      <div class="row" data-modes="1 3"><label>Scarica a<small class="hint" id="p_dischargeMax">max 2,80 A</small></label><div class="val"><input type="number" id="p_dischargeE" value="2.50" step="0.05" inputmode="decimal"><span class="unit">A</span></div></div>
       <div class="row" data-modes="0 3"><label>Corrente di spegnimento<small class="hint">0 = spento</small></label><div class="val"><input type="number" id="p_inStopCurrent" value="0" step="0.01" inputmode="decimal"><span class="unit">A</span></div></div>
       <div class="row" data-modes="0 3"><label>Target Voltage</label><div class="val"><input type="number" id="p_inStopVoltage" value="1.70" step="0.01" inputmode="decimal"><span class="unit">V</span></div></div>
       <div class="row" data-modes="1"><label>Corrente di spegnimento<small class="hint">0 = spento</small></label><div class="val"><input type="number" id="p_outStopCurrent" value="0" step="0.01" inputmode="decimal"><span class="unit">A</span></div></div>
@@ -278,7 +278,7 @@
       <div class="row"><label>Modalità</label><div class="val"><span class="unit" style="color:var(--orange)">Scarica</span></div></div>
       <div class="row"><label>Durata gara</label><div class="val"><input type="number" id="r_seconds" value="22" min="5" max="120" inputmode="numeric"><span class="unit">s</span></div></div>
       <div class="row"><label>Capacità</label><div class="val"><input type="number" id="r_capacity" value="0" inputmode="numeric"><span class="unit">mAh</span></div></div>
-      <div class="row"><label>Scarica a</label><div class="val"><input type="number" id="r_dischargeE" value="2.50" step="0.05" inputmode="decimal"><span class="unit">A</span></div></div>
+      <div class="row"><label>Scarica a<small class="hint" id="r_dischargeMax">max 2,80 A</small></label><div class="val"><input type="number" id="r_dischargeE" value="2.50" step="0.05" inputmode="decimal"><span class="unit">A</span></div></div>
       <div class="row"><label>Corrente di spegnimento</label><div class="val"><input type="number" id="r_outStopCurrent" value="0" step="0.01" inputmode="decimal"><span class="unit">A</span></div></div>
       <div class="row"><label>Tensione di spegnimento</label><div class="val"><input type="number" id="r_outStopVoltage" value="1.00" step="0.01" inputmode="decimal"><span class="unit">V</span></div></div>
       <div class="row"><label>Timer di spegnimento</label><div class="val"><input type="number" id="r_inTimeProtect" value="180" inputmode="numeric"><span class="unit">min</span></div></div>
@@ -377,10 +377,11 @@ const DRAW_POINTS = 3000;
 const WRITE_GAP_MS = 150;
 
 // Limiti di sicurezza (il codice non invia nulla fuori da questi)
+// Scarica fino a 2,8 A (firmware attuale del Pro); sull'Octa resta 2,5 A, vedi maxDischargeMa()
 const LIMITS = {
-  position: [1, 8], model: [0, 255], chargeE: [100, 1000], dischargeE: [100, 2500],
+  position: [1, 8], model: [0, 255], chargeE: [100, 1000], dischargeE: [100, 2800],
   capacity: [100, 5000], inStopVoltage: [1400, 1750], outStopVoltage: [900, 1200],
-  inStopCurrent: [0, 300], outStopCurrent: [0, 2500], chargeRestTime: [0, 60],
+  inStopCurrent: [0, 300], outStopCurrent: [0, 2800], chargeRestTime: [0, 60],
   dischargeRestTime: [0, 60], cycleCount: [1, 10], cycleMode: [0, 3], detalV: [3, 15],
   track: [0, 500], restartVolt: [0, 1500], tempProtect: [40, 65], inTimeProtect: [0, 360],
   inMaxbostCapacity: [100, 5000], truboMode: [0, 1]
@@ -395,7 +396,16 @@ let logLines = [];
 let previewedKey = null;
 let previewedAllKey = null;
 let currentMode = 3;   // 0 Carica, 1 Scarica, 3 Ciclo (valori dell'app)
+let currentModel = 'pro';   // 'pro' (4 canali) o 'octa' (8 canali), lo imposta applyModel()
 const MODE_NAME = { 0: 'Carica', 1: 'Scarica', 3: 'Ciclo' };
+
+// Corrente di scarica massima per modello: Pro 2,8 A (firmware attuale), Octa 2,5 A
+function maxDischargeMa() { return currentModel === 'octa' ? 2500 : 2800; }
+function ampTxt(ma) { return (ma / 1000).toFixed(2).replace('.', ',') + ' A'; }
+function updateDischargeHints() {
+  const t = 'max ' + ampTxt(maxDischargeMa());
+  for (const id of ['p_dischargeMax', 'r_dischargeMax']) { const e = $(id); if (e) e.textContent = t; }
+}
 function setMode(m) {
   currentMode = m;
   previewedKey = null; previewedAllKey = null;
@@ -464,6 +474,9 @@ function validate(p) {
     const v = p[k];
     const ok = (Number.isFinite(v) && v >= lo && v <= hi && Number.isInteger(v)) || (k === 'capacity' && p.model === 1 && v === 0);
     if (!ok) { errs.push(k + ': valore fuori da ' + lo + '–' + hi); bad.push(k); }
+  }
+  if (Number.isFinite(p.dischargeE) && p.dischargeE > maxDischargeMa() && !bad.includes('dischargeE')) {
+    errs.push('scarica massima ' + ampTxt(maxDischargeMa()) + ' su questo caricabatterie'); bad.push('dischargeE');
   }
   if (p.model !== 1 && p.outStopVoltage >= p.inStopVoltage) { errs.push('fine scarica deve essere sotto la fine carica'); bad.push('outStopVoltage'); }
   if (p.model !== 1 && p.inTimeProtect > 0 && p.inTimeProtect < 1.3 * (p.capacity / p.chargeE * 60)) {
@@ -1026,9 +1039,10 @@ function raceReasons() {
   if (!CHANNELS.some(ch => $('r_ch' + ch).checked)) why.push('seleziona almeno un\'uscita');
   const q = raceParams();
   if (!(q.seconds >= 5 && q.seconds <= 120)) why.push('durata tra 5 e 120 s');
-  if (!(q.dischargeE >= 100 && q.dischargeE <= 2500)) why.push('scarica tra 0,10 e 2,50 A');
+  const maxD = maxDischargeMa();
+  if (!(q.dischargeE >= 100 && q.dischargeE <= maxD)) why.push('scarica tra 0,10 e ' + ampTxt(maxD));
   if (!(q.outStopVoltage >= 900 && q.outStopVoltage <= 1200)) why.push('tensione di spegnimento tra 0,90 e 1,20 V');
-  if (!(q.outStopCurrent >= 0 && q.outStopCurrent <= 2500)) why.push('corrente di spegnimento non valida');
+  if (!(q.outStopCurrent >= 0 && q.outStopCurrent <= maxD)) why.push('corrente di spegnimento non valida');
   if (!(q.capacity === 0 || (q.capacity >= 100 && q.capacity <= 5000))) why.push('capacità 0 (spento) oppure tra 100 e 5000 mAh');
   if (!(q.inTimeProtect === 0 || (q.inTimeProtect >= 30 && q.inTimeProtect <= 360))) why.push('timer 0 (spento) oppure tra 30 e 360 min');
   if (!$('chkRace').checked) why.push('spunta la conferma');
@@ -1036,6 +1050,7 @@ function raceReasons() {
 }
 
 function updateRaceButton() {
+  updateDischargeHints();
   const rr = raceReasons();
   $('btnRaceStart').disabled = rr.length > 0;
   $('btnRaceAbort').disabled = !race;
@@ -2466,7 +2481,7 @@ const MODEL_DEF = {
   pro: { label: 'NC3000 Pro · 4 canali', n: 4 },
   octa: { label: 'NC3000 Octa · 8 canali', n: 8 }
 };
-let currentModel = 'pro';
+// currentModel è dichiarato in alto (serve già alla validazione durante il caricamento)
 
 // le liste di uscite seguono il modello: 4 sul Pro, 8 sull'Octa
 function buildChannelUI() {
@@ -2485,6 +2500,7 @@ function applyModel(m) {
   renderLatest();
   drawAll();
   $('status').textContent = MODEL_DEF[currentModel].label;
+  updateDischargeHints();
 }
 
 applyModel(localStorage.getItem(MODEL_KEY) || 'pro');
