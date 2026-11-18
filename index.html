@@ -171,6 +171,11 @@
       <button id="btnDisc" class="btn ghost" disabled>Disconnetti</button>
       <button id="btnExport" class="btn ghost" disabled>Esporta CSV</button>
     </div>
+    <div class="btns two" style="margin-top:0">
+      <button id="btnHist" class="btn ghost" disabled>Recupera storico</button>
+      <button id="btnHistSave" class="btn ghost" disabled>Salva storico</button>
+    </div>
+    <p class="hint" style="margin:2px 0 8px">«Recupera storico» scarica dal caricatore la curva di tensione del programma, anche la parte fatta prima di collegarti.</p>
 
     <div class="kpis" style="display:none">
       <div class="kpi"><small>Inviati</small><b id="tx">0</b></div>
@@ -368,6 +373,7 @@ const CHR = '0000ffe1-0000-1000-8000-00805f9b34fb';
 const CMD_HEARTBEAT = 0xEE, CMD_NC_DATA = 0x91, CMD_START = 0x94, CMD_STOP = 0xFE;
 const CMD_INFO = 0x57;
 const CMD_STATUS_OCTA = 0x9A; // stato di tutti gli slot (Octa), sola lettura // richiesta di informazioni (sola lettura), come Cmd.getDeviceInfo dell'app ufficiale
+const CMD_HISTORY = 0x98;     // storico della curva di un'uscita (sola lettura), come Cmd.queryHistoryData dell'app ufficiale
 const MASK_OF_POS = { 1: 1, 2: 2, 3: 4, 4: 8, 5: 16, 6: 32, 7: 64, 8: 128 };
 const POS_OF_MASK = { 1: 1, 2: 2, 4: 3, 8: 4, 16: 5, 32: 6, 64: 7, 128: 8 };
 let CHANNELS = [1, 2, 3, 4];
@@ -540,6 +546,7 @@ function assertAllowed(cmd, payload) {
   if (cmd === CMD_INFO) return payload.length === 17 && (payload[0] === 0x00 || payload[0] === 0x01);
   if (cmd === CMD_STATUS_OCTA) return payload.length === 1 && payload[0] === 0x00;
   if (cmd === CMD_START) return payload.length === 40 && isSlotMask(payload[0]);
+  if (cmd === CMD_HISTORY) return payload.length === 1 && isSlotMask(payload[0]);
   return false;
 }
 
@@ -585,6 +592,7 @@ function handleFrame(f) {
     addLog(t.toFixed(1).padStart(8) + ' s  RX non valida ' + hex(f));
     return;
   }
+  if (f[2] === CMD_HISTORY) { handleHistoryFrame(f); return; }
   if (f[2] !== CMD_NC_DATA) {
     addLog(t.toFixed(1).padStart(8) + ' s  RX risposta comando ' + f[2].toString(16) + '  ' + hex(f));
     return;
@@ -638,10 +646,162 @@ function onData(ev) {
 }
 
 
+// ---------- Storico della curva (comando 0x98) ----------
+// Come l'app ufficiale (Cmd.queryHistoryData e BleDataSourceImpl.handleIncomingBleData):
+// si chiede una volta 0F 03 98 <uscita> <somma> e il caricatore manda la curva di tensione
+// del programma a pacchetti: 0F len 98 [uscita] [pacchetti totali] [pacchetto, da 1]
+// [intervallo, s] [tensioni in mV, 16 bit little-endian]… somma.
+// Il campione i è a i × intervallo secondi dall'inizio del programma.
+const HIST_TIMEOUT_MS = 3000;
+let histJob = null;          // scaricamento in corso (un'uscita alla volta)
+let histData = {};           // uscita -> { interval, mv, tStart }  (tStart sull'asse del grafico, s)
+let lastHistoryDump = null;  // ultimo scaricamento, per «Salva storico»
+let histBusy = false;
+
+function fmtSpan(s) {
+  if (s >= 3600) return (s / 3600).toFixed(1).replace('.', ',') + ' h';
+  if (s >= 120) return Math.round(s / 60) + ' min';
+  return Math.round(s) + ' s';
+}
+
+function parseHistoryFrame(f) {
+  if (!f || f.length < 8 || f[2] !== CMD_HISTORY) return null;
+  const mv = [];
+  for (let i = 7; i + 1 < f.length - 1; i += 2) mv.push(f[i] | (f[i + 1] << 8));
+  const pos = currentModel === 'octa' ? f[3] : POS_OF_MASK[f[3]];
+  return { pos, port: f[3], total: f[4], page: f[5], interval: f[6], mv };
+}
+
+function armHistTimer() {
+  const j = histJob;
+  if (!j) return;
+  clearTimeout(j.timer);
+  j.timer = setTimeout(() => { if (histJob === j) finishHistory(j.page ? 'incompleto' : 'nessuna risposta'); }, HIST_TIMEOUT_MS);
+}
+
+function finishHistory(status) {
+  const j = histJob;
+  if (!j) return;
+  clearTimeout(j.timer);
+  histJob = null;
+  j.resolve({ status, pos: j.pos, interval: j.interval, total: j.total, page: j.page, mv: j.mv, frames: j.frames });
+}
+
+function requestHistory(pos) {
+  return new Promise(resolve => {
+    histJob = { pos, page: 0, total: 0, interval: 0, mv: [], frames: [], gaps: false, timer: null, resolve };
+    armHistTimer();
+    if (!sendSafe(CMD_HISTORY, [slotByte(pos)], '0x98 storico CH' + pos)) finishHistory('non inviato');
+  });
+}
+
+function handleHistoryFrame(f) {
+  const h = parseHistoryFrame(f);
+  if (!histJob || !h) { addLog('RX storico non richiesto  ' + hex(f)); return; }
+  const j = histJob;
+  j.frames.push(hex(f));
+  if (h.pos !== j.pos) { addLog('Storico: risposta per un\'altra uscita (' + h.port + '), ignorata'); return; }
+  if (!h.total || !h.page) { finishHistory('vuoto'); return; }
+  if (h.page === 1) { j.mv = []; j.gaps = false; }
+  else if (h.page !== j.page + 1) j.gaps = true;
+  j.page = h.page; j.total = h.total; j.interval = h.interval;
+  for (const v of h.mv) j.mv.push(v);
+  $('status').textContent = 'Storico CH' + j.pos + ': pacchetto ' + h.page + '/' + h.total;
+  if (h.page >= h.total) finishHistory(j.gaps ? 'incompleto' : 'ok');
+  else armHistTimer();
+}
+
+// Mette lo storico sull'asse del grafico (secondi dalla connessione). Le letture 0x91 portano
+// il tempo del programma (counter, s): se è coerente con lo storico lo uso per agganciarlo,
+// altrimenti l'ultimo campione dello storico vale «adesso».
+function storeHistory(r) {
+  const iv = r.interval || 1;
+  const endProg = (r.mv.length - 1) * iv;
+  const nowT = (Date.now() - t0) / 1000;
+  const L = latest[r.pos];
+  const fromCounter = !!(L && L.counter > 0 && Math.abs(L.counter - endProg) <= (nowT - L.t) + 2 * iv + 5);
+  histData[r.pos] = { interval: iv, mv: r.mv.slice(), tStart: fromCounter ? L.t - L.counter : nowT - endProg, fromCounter };
+}
+
+function firstLiveT(ch) {
+  for (const s of samples) if (s.ch === ch) return s.t;
+  return Infinity;
+}
+
+// punti dello storico che vengono prima delle letture in diretta del canale: [tempo s, mV]
+function historyPoints(ch) {
+  const h = histData[ch];
+  if (!h) return [];
+  const until = firstLiveT(ch), out = [];
+  for (let i = 0; i < h.mv.length; i++) {
+    const t = h.tStart + i * h.interval;
+    if (t >= until) break;
+    out.push([t, h.mv[i]]);
+  }
+  return out;
+}
+
+function histSummary(r) {
+  if (!r.mv.length) return r.status === 'vuoto' ? 'nessun dato' : r.status;
+  return r.mv.length + ' punti ogni ' + r.interval + ' s (' + fmtSpan((r.mv.length - 1) * r.interval) + ')' +
+         (r.status === 'ok' ? '' : ', ' + r.status + ' ' + r.page + '/' + r.total);
+}
+
+async function downloadHistory() {
+  if (histBusy) return;
+  if (!isLinked()) { $('status').textContent = 'Collega prima il caricabatterie'; return; }
+  if (race) { addLog('Storico: non disponibile durante una gara'); return; }
+  if (detecting) { addLog('Storico: attendi il riconoscimento del modello'); return; }
+  histBusy = true;
+  $('btnHist').disabled = true;
+  const wasPolling = !!pollTimer;
+  stopPolling();                       // niente letture 0x91 mentre arrivano i pacchetti
+  const results = [];
+  for (const pos of CHANNELS) {
+    if (!isLinked()) break;
+    $('status').textContent = 'Storico CH' + pos + '…';
+    const r = await requestHistory(pos);
+    results.push(r);
+    if (r.mv.length) storeHistory(r);
+    addLog('Storico CH' + pos + ': ' + histSummary(r));
+  }
+  lastHistoryDump = {
+    app: 'NC3000', tipo: 'storico 0x98', modello: currentModel, creato: new Date().toISOString(),
+    canali: results.map(r => ({
+      uscita: r.pos, esito: r.status, intervallo_s: r.interval, pacchetti: r.page + '/' + r.total,
+      campioni: r.mv.length, durata_s: r.mv.length ? (r.mv.length - 1) * r.interval : 0,
+      tensioni_mV: r.mv, pacchetti_hex: r.frames
+    }))
+  };
+  $('btnHistSave').disabled = false;
+  histBusy = false;
+  $('btnHist').disabled = !isLinked();
+  if (wasPolling && isLinked()) startPolling();
+  const got = results.filter(r => r.mv.length);
+  $('status').textContent = got.length
+    ? 'Storico recuperato: ' + got.map(r => 'CH' + r.pos + ' ' + fmtSpan((r.mv.length - 1) * r.interval)).join(' · ')
+    : 'Nessuno storico ricevuto: riprova dopo 5 minuti di programma o a fine ciclo (vedi registro)';
+  drawAll();
+}
+
+function saveHistory() {
+  if (!lastHistoryDump) return;
+  downloadFile('nc3000_storico_' + new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-') + '.json',
+               JSON.stringify(lastHistoryDump, null, 1), 'application/json');
+}
+
 function seriesOf(kind) {
   const out = { 1: [], 2: [], 3: [], 4: [], 5: [], 6: [], 7: [], 8: [] };
   for (const s of samples) if (out[s.ch]) out[s.ch].push([s.t, kind === 'V' ? s.mV / 1000 : s.ir]);
   for (const ch of CHANNELS) if (out[ch].length > DRAW_POINTS) out[ch] = out[ch].slice(-DRAW_POINTS);
+  // lo storico (solo tensione) va davanti alle letture in diretta
+  if (kind === 'V') for (const ch of CHANNELS) {
+    const hp = historyPoints(ch);
+    if (!hp.length) continue;
+    const step = Math.ceil(hp.length / DRAW_POINTS), pts = [];
+    for (let i = 0; i < hp.length; i += step) pts.push([hp[i][0], hp[i][1] / 1000]);
+    out[ch] = pts.concat(out[ch]);
+  }
   return out;
 }
 
@@ -676,7 +836,7 @@ function drawChart(id, series, fmt, refY) {
   ctx.strokeStyle = '#333'; ctx.beginPath(); ctx.moveTo(L, T); ctx.lineTo(L, B); ctx.lineTo(R, B); ctx.stroke();
   ctx.fillStyle = '#aaa';
   ctx.fillText(fmt(y2), 4, T + 8); ctx.fillText(fmt(y1), 4, B);
-  ctx.fillText(Math.round(span) + ' s', R - 60, h - 6);
+  ctx.fillText(fmtSpan(span), R - 60, h - 6);
   for (const ch of CHANNELS) {
     const s = series[ch];
     if (s.length < 2) continue;
@@ -745,6 +905,8 @@ function setConnected(on) {
   if (!on) { $('modelPick').style.display = 'none'; $('btnPoll').textContent = 'Avvia letture'; }
   $('btnDisc').disabled = !on;
   $('btnExport').disabled = !on;
+  $('btnHist').disabled = !on || histBusy;
+  $('btnHistSave').disabled = !lastHistoryDump;
   $('btnStopCh').disabled = !on;
   $('btnStopAll').disabled = !on;
   updateStartButton();
@@ -778,7 +940,7 @@ async function connect() {
     char = await svc.getCharacteristic(CHR);
     useWnR = !!char.properties.writeWithoutResponse;
     if (!useWnR && !char.properties.write) throw new Error('caratteristica non scrivibile');
-    rxBuf = []; samples = []; latest = {};
+    rxBuf = []; samples = []; latest = {}; histData = {}; lastHistoryDump = null;
     txCount = 0; rxOk = 0; rxBad = 0; logLines = [];
     t0 = Date.now();
     $('tx').textContent = 0; $('rxok').textContent = 0; $('rxbad').textContent = 0;
@@ -932,11 +1094,20 @@ function stopAll() {
   for (const pos of CHANNELS) stopChannel(pos);
 }
 
-function exportCsv() {
+function csvRows() {
   const rows = ['tempo_s,canale,tensione_mV,corrente_mA,resistenza_mOhm,capacita_mAh,dV_mV,stato,modo,errore,hex'];
+  // storico recuperato dal caricatore (solo tensione), prima delle letture in diretta
+  for (const ch of CHANNELS) for (const [t, mv] of historyPoints(ch)) {
+    rows.push([t.toFixed(3), 'CH' + ch, mv, '', '', '', '', '', '', '', 'storico'].join(','));
+  }
   for (const s of samples) {
     rows.push([s.t.toFixed(3), 'CH' + s.ch, s.mV, s.mA, s.ir, s.cap, s.dV, s.stato, s.modo, s.err, s.hex.replace(/ /g, '')].join(','));
   }
+  return rows;
+}
+
+function exportCsv() {
+  const rows = csvRows();
   const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -971,6 +1142,8 @@ $('btnConnect').onclick = connect;
 $('btnPoll').onclick = startPolling;
 $('btnDisc').onclick = disconnect;
 $('btnExport').onclick = exportCsv;
+$('btnHist').onclick = downloadHistory;
+$('btnHistSave').onclick = saveHistory;
 $('btnPreview').onclick = () => { saveParams(); renderPreview(); };
 $('btnStart').onclick = startProgram;
 $('btnStartAll').onclick = startAll;
