@@ -93,6 +93,9 @@
   .chart { background: var(--panel); border-radius: 12px; padding: 8px; }
   .chart h3 { margin: 2px 4px 6px; font-size: 12px; font-weight: 500; color: var(--muted); }
   canvas { width: 100%; height: 150px; display: block; border-radius: 8px; }
+  .chart.wide { grid-column: 1 / -1; }
+  #chartV { height: 230px; cursor: zoom-in; }
+  #chartV.big { height: 72vh; cursor: zoom-out; }
 
   .actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
   .actions .btn { width: auto; flex: 1; min-width: 120px; }
@@ -162,6 +165,7 @@
   <!-- MONITOR -->
   <section id="tab-monitor" class="tab active">
     <div class="row" style="margin:8px 0"><label>Caricabatterie</label><div class="val"><span id="modelName" class="hint">Rilevato alla connessione</span></div></div>
+    <div class="row" id="fwRow" style="margin:0 0 8px"><label>Firmware<small class="hint" id="fwHint">scarica max 2,50 A · cicli max 3</small></label><div class="val"><select id="fwSel"><option value="orig">Originale</option><option value="mod">Modificato</option></select></div></div>
     <div id="modelPick" class="btns two" style="display:none;margin-top:4px"><button id="btnPickPro" class="btn ghost">È un NC3000 Pro (4 canali)</button><button id="btnPickOcta" class="btn ghost">È un Octa (8 canali)</button></div>
     <div class="btns two" style="margin-top:10px">
       <button id="btnConnect" class="btn">Connetti</button>
@@ -172,10 +176,10 @@
       <button id="btnExport" class="btn ghost" disabled>Esporta CSV</button>
     </div>
     <div class="btns two" style="margin-top:0">
-      <button id="btnHist" class="btn ghost" disabled>Recupera storico</button>
+      <button id="btnHist" class="btn ghost" disabled>Aggiorna storico</button>
       <button id="btnHistSave" class="btn ghost" disabled>Salva storico</button>
     </div>
-    <p class="hint" style="margin:2px 0 8px">«Recupera storico» scarica dal caricatore la curva di tensione del programma, anche la parte fatta prima di collegarti.</p>
+    <p class="hint" style="margin:2px 0 8px">Quando ti colleghi, e quando torni sull'app dopo un po', la curva di tensione salvata nel caricatore si scarica da sola: il grafico Tensione mostra il ciclo dall'inizio. «Aggiorna storico» la riscarica a mano.</p>
 
     <div class="kpis" style="display:none">
       <div class="kpi"><small>Inviati</small><b id="tx">0</b></div>
@@ -188,8 +192,9 @@
 
     <div class="sec">ANDAMENTO</div>
     <div class="charts">
-      <div class="chart"><h3>Tensione</h3><canvas id="chartV"></canvas></div>
+      <div class="chart wide"><h3>Tensione <span style="color:var(--dim);font-weight:400">· tocca il grafico per ingrandirlo</span></h3><canvas id="chartV"></canvas></div>
       <div class="chart"><h3>Resistenza interna</h3><canvas id="chartT"></canvas></div>
+      <div class="chart" id="chartTempBox" style="display:none"><h3>Temperatura</h3><canvas id="chartTemp"></canvas></div>
     </div>
   </section>
 
@@ -236,7 +241,7 @@
       <div class="row" data-modes="3"><label>Scarico a riposo</label><div class="val"><input type="number" id="p_dischargeRestTime" value="10" inputmode="numeric"><span class="unit">min</span></div></div>
       <div class="row" data-modes="0 3"><label>Delta Peak −ΔV</label><div class="val"><input type="number" id="p_detalV" value="6" inputmode="numeric"><span class="unit">mV</span></div></div>
       <div class="row" data-modes="3"><label>Modalità ciclo</label><div class="val"><select id="p_cycleMode"><option value="0" selected>C→D</option><option value="1">D→C</option><option value="2">C→D→C</option><option value="3">D→C→D</option></select></div></div>
-      <div class="row" data-modes="3"><label>Numero di cicli</label><div class="val"><input type="number" id="p_cycleCount" value="3" min="1" max="10" inputmode="numeric"></div></div>
+      <div class="row" data-modes="3"><label>Numero di cicli<small class="hint" id="p_cycleMax">max 3</small></label><div class="val"><input type="number" id="p_cycleCount" value="3" min="1" max="3" inputmode="numeric"></div></div>
       <div class="row" data-modes="0 3"><label>Modalità attuale</label><div class="val"><select id="p_truboMode"><option value="0" selected>Fissa</option><option value="1">IR Auto</option></select></div></div>
     </div>
 
@@ -382,8 +387,9 @@ const MAX_SAMPLES = 100000;
 const DRAW_POINTS = 3000;
 const WRITE_GAP_MS = 150;
 
-// Limiti di sicurezza (il codice non invia nulla fuori da questi)
-// Scarica fino a 2,8 A (firmware attuale del Pro); sull'Octa resta 2,5 A, vedi maxDischargeMa()
+// Limiti di sicurezza (il codice non invia nulla fuori da questi). Sono i massimi assoluti:
+// Pro col firmware originale SkyRC 2,5 A e 3 cicli, col firmware modificato 2,8 A e 10 cicli;
+// Octa 2,5 A. Vedi maxDischargeMa() e maxCycles().
 const LIMITS = {
   position: [1, 8], model: [0, 255], chargeE: [100, 1000], dischargeE: [100, 2800],
   capacity: [100, 5000], inStopVoltage: [1400, 1750], outStopVoltage: [900, 1200],
@@ -405,12 +411,33 @@ let currentMode = 3;   // 0 Carica, 1 Scarica, 3 Ciclo (valori dell'app)
 let currentModel = 'pro';   // 'pro' (4 canali) o 'octa' (8 canali), lo imposta applyModel()
 const MODE_NAME = { 0: 'Carica', 1: 'Scarica', 3: 'Ciclo' };
 
-// Corrente di scarica massima per modello: Pro 2,8 A (firmware attuale), Octa 2,5 A
-function maxDischargeMa() { return currentModel === 'octa' ? 2500 : 2800; }
+// Firmware del Pro: 'orig' = originale SkyRC (valori standard, predefinito), 'mod' = modificato (2,8 A, 10 cicli).
+// Si sceglie a mano e resta salvato su questo telefono: via Bluetooth i due firmware rispondono uguale.
+const FW_KEY = 'nc3000_fw_v1';
+let proFirmware = (() => { try { return localStorage.getItem(FW_KEY) === 'mod' ? 'mod' : 'orig'; } catch (e) { return 'orig'; } })();
+let tempSeen = false;       // il caricatore manda la temperatura dei canali (byte 8 del pacchetto 0x91)
+
+// Massimi per modello e firmware: Pro originale 2,5 A e 3 cicli, Pro modificato 2,8 A e 10 cicli, Octa 2,5 A
+function maxDischargeMa() { return currentModel === 'octa' ? 2500 : (proFirmware === 'mod' ? 2800 : 2500); }
+function maxCycles() { return currentModel === 'octa' ? LIMITS.cycleCount[1] : (proFirmware === 'mod' ? 10 : 3); }
+function fwLabel() { return currentModel === 'octa' ? 'su questo caricabatterie' : (proFirmware === 'mod' ? 'col firmware modificato' : 'col firmware originale'); }
 function ampTxt(ma) { return (ma / 1000).toFixed(2).replace('.', ',') + ' A'; }
 function updateDischargeHints() {
   const t = 'max ' + ampTxt(maxDischargeMa());
   for (const id of ['p_dischargeMax', 'r_dischargeMax']) { const e = $(id); if (e) e.textContent = t; }
+  const c = $('p_cycleMax'); if (c) c.textContent = 'max ' + maxCycles();
+  const cc = $('p_cycleCount'); if (cc) cc.max = String(maxCycles());
+  const fh = $('fwHint'); if (fh) fh.textContent = 'scarica max ' + ampTxt(maxDischargeMa()) + ' · cicli max ' + maxCycles();
+  const fr = $('fwRow'); if (fr) fr.style.display = currentModel === 'octa' ? 'none' : '';
+  const fs = $('fwSel'); if (fs) fs.value = proFirmware;
+}
+function setFirmware(v) {
+  proFirmware = v === 'mod' ? 'mod' : 'orig';
+  try { localStorage.setItem(FW_KEY, proFirmware); } catch (e) { /* ignora */ }
+  previewedKey = null; previewedAllKey = null;    // limiti cambiati: l'anteprima va rifatta
+  updateDischargeHints();
+  updateStartButton();
+  addLog('Firmware del Pro: ' + (proFirmware === 'mod' ? 'modificato (2,8 A · 10 cicli)' : 'originale SkyRC (2,5 A · 3 cicli)'));
 }
 function setMode(m) {
   currentMode = m;
@@ -482,7 +509,13 @@ function validate(p) {
     if (!ok) { errs.push(k + ': valore fuori da ' + lo + '–' + hi); bad.push(k); }
   }
   if (Number.isFinite(p.dischargeE) && p.dischargeE > maxDischargeMa() && !bad.includes('dischargeE')) {
-    errs.push('scarica massima ' + ampTxt(maxDischargeMa()) + ' su questo caricabatterie'); bad.push('dischargeE');
+    errs.push('scarica massima ' + ampTxt(maxDischargeMa()) + ' ' + fwLabel()); bad.push('dischargeE');
+  }
+  if (Number.isFinite(p.outStopCurrent) && p.outStopCurrent > maxDischargeMa() && !bad.includes('outStopCurrent')) {
+    errs.push('corrente di fine scarica massima ' + ampTxt(maxDischargeMa()) + ' ' + fwLabel()); bad.push('outStopCurrent');
+  }
+  if (p.model === 3 && Number.isFinite(p.cycleCount) && p.cycleCount > maxCycles() && !bad.includes('cycleCount')) {
+    errs.push('cicli massimo ' + maxCycles() + ' ' + fwLabel()); bad.push('cycleCount');
   }
   if (p.model !== 1 && p.outStopVoltage >= p.inStopVoltage) { errs.push('fine scarica deve essere sotto la fine carica'); bad.push('outStopVoltage'); }
   if (p.model !== 1 && p.inTimeProtect > 0 && p.inTimeProtect < 1.3 * (p.capacity / p.chargeE * 60)) {
@@ -511,7 +544,7 @@ function buildSettings(p) {
   be(14, p.outStopCurrent !== 0 ? p.outStopCurrent : p.dischargeE);
   be(16, p.chargeRestTime);
   be(18, p.dischargeRestTime);
-  b[20] = p.cycleCount;
+  b[20] = Math.min(p.cycleCount, maxCycles());   // fuori dal ciclo il valore non conta, ma resta nei limiti del firmware
   b[21] = p.cycleMode;
   b[22] = p.detalV;
   b[23] = Math.floor(p.track / 10) & 0xFF;
@@ -611,21 +644,38 @@ function handleFrame(f) {
     ir: be(16),                                                  // resistenza interna, mΩ
     cap: be(10),                                                 // capacità della fase, mAh
     dV: f[9],                                                    // −ΔV in mV (byte 9; il firmware manda un solo byte)
-    tempC: f[8] || null,                                         // byte 8: sempre 0 col firmware originale, °C del canale col firmware modificato
+    tempC: f[8] || null,                                         // byte 8: °C del canale se il firmware lo manda (originale e v7: sempre 0)
     counter: ((f[12] << 24) >>> 0) + (f[13] << 16) + (f[14] << 8) + f[15], // tempo, s
     stato: f[18],                                                // 2 carica, 3 scarica, 4 riposo, 5/6 completato
     modo: f[19],                                                 // 0 carica, 1 scarica, 3 ciclo, 4 MaxBoost, 5 turbo
     err: f[20],                                                  // codice di errore (0 = nessuno)
     hex: hex(f)
   };
-  samples.push(s);
-  if (samples.length > MAX_SAMPLES) samples.shift();
+  pushSample(s);
   latest[ch] = s;
+  if (s.tempC) tempSeen = true;
   checkAlarms(s);
   addLog(t.toFixed(1).padStart(8) + ' s  CH' + ch + '  ' + (s.mV / 1000).toFixed(3) + ' V  ' +
          (s.mA / 1000).toFixed(2) + ' A  ' + s.ir + ' mΩ');
   renderLatest();
   if (performance.now() - lastDraw > 500) { lastDraw = performance.now(); drawAll(); }
+}
+
+// Oltre MAX_SAMPLES letture non butto le più vecchie: tengo una lettura su due della metà più
+// vecchia (per ogni canale), così un ciclo lungo resta intero dall'inizio, solo meno fitto.
+function pushSample(s) {
+  samples.push(s);
+  if (samples.length > MAX_SAMPLES) thinOldSamples();
+}
+function thinOldSamples() {
+  const half = Math.floor(samples.length / 2), seen = {};
+  let w = 0;
+  for (let i = 0; i < samples.length; i++) {
+    const s = samples[i];
+    if (i < half) { seen[s.ch] = (seen[s.ch] || 0) + 1; if (seen[s.ch] % 2 === 0) continue; }
+    samples[w++] = s;
+  }
+  samples.length = w;
 }
 
 function onData(ev) {
@@ -652,11 +702,15 @@ function onData(ev) {
 // del programma a pacchetti: 0F len 98 [uscita] [pacchetti totali] [pacchetto, da 1]
 // [intervallo, s] [tensioni in mV, 16 bit little-endian]… somma.
 // Il campione i è a i × intervallo secondi dall'inizio del programma.
+// Si scarica da solo dopo il collegamento e quando si torna sull'app dopo almeno un minuto
+// (in secondo piano il telefono rallenta le letture: lo storico riempie i buchi).
 const HIST_TIMEOUT_MS = 3000;
+const HIST_AUTO_HIDDEN_MS = 60000;
 let histJob = null;          // scaricamento in corso (un'uscita alla volta)
 let histData = {};           // uscita -> { interval, mv, tStart }  (tStart sull'asse del grafico, s)
 let lastHistoryDump = null;  // ultimo scaricamento, per «Salva storico»
 let histBusy = false;
+let autoHistTimer = null;
 
 function fmtSpan(s) {
   if (s >= 3600) return (s / 3600).toFixed(1).replace('.', ',') + ' h';
@@ -714,8 +768,25 @@ function handleHistoryFrame(f) {
 // Mette lo storico sull'asse del grafico (secondi dalla connessione). Le letture 0x91 portano
 // il tempo del programma (counter, s): se è coerente con lo storico lo uso per agganciarlo,
 // altrimenti l'ultimo campione dello storico vale «adesso».
+// Stesso programma già scaricato (stessa partenza e stessa tensione a metà)? Allora quando si
+// riscarica tengo l'aggancio della prima volta: a programma finito lo storico non cresce più e
+// «l'ultimo campione = adesso» sposterebbe la curva in avanti.
+function sameProgram(old, r, iv) {
+  if (!old || !old.mv.length || !r.mv.length || old.mv[0] !== r.mv[0]) return false;
+  const iOld = Math.floor((old.mv.length - 1) / 2), x = iOld * old.interval / iv, j0 = Math.floor(x);
+  if (j0 >= r.mv.length) return false;                    // il nuovo è più corto: è un altro programma
+  const j1 = Math.min(j0 + 1, r.mv.length - 1);
+  const v = r.mv[j0] + (r.mv[j1] - r.mv[j0]) * (x - j0);  // il nuovo storico allo stesso istante
+  return Math.abs(v - old.mv[iOld]) <= 10;
+}
+
 function storeHistory(r) {
   const iv = r.interval || 1;
+  const old = histData[r.pos];
+  if (sameProgram(old, r, iv)) {
+    histData[r.pos] = { interval: iv, mv: r.mv.slice(), tStart: old.tStart, fromCounter: old.fromCounter };
+    return;
+  }
   const endProg = (r.mv.length - 1) * iv;
   const nowT = (Date.now() - t0) / 1000;
   const L = latest[r.pos];
@@ -723,19 +794,32 @@ function storeHistory(r) {
   histData[r.pos] = { interval: iv, mv: r.mv.slice(), tStart: fromCounter ? L.t - L.counter : nowT - endProg, fromCounter };
 }
 
-function firstLiveT(ch) {
-  for (const s of samples) if (s.ch === ch) return s.t;
-  return Infinity;
+// tratti coperti dalle letture in diretta di un canale: [[inizio, fine], …] in s;
+// due letture più distanti di «gap» secondi lasciano un buco
+function liveCoverage(ch, gap) {
+  const segs = [];
+  let a = null, b = null;
+  for (const s of samples) {
+    if (s.ch !== ch) continue;
+    if (a !== null && s.t - b > gap) { segs.push([a, b]); a = null; }
+    if (a === null) a = s.t;
+    b = s.t;
+  }
+  if (a !== null) segs.push([a, b]);
+  return segs;
 }
 
-// punti dello storico che vengono prima delle letture in diretta del canale: [tempo s, mV]
+// punti dello storico dove mancano le letture in diretta (prima del collegamento o nei buchi): [tempo s, mV]
 function historyPoints(ch) {
   const h = histData[ch];
   if (!h) return [];
-  const until = firstLiveT(ch), out = [];
+  const segs = liveCoverage(ch, Math.max(15, 2 * h.interval));
+  const out = [];
+  let k = 0;
   for (let i = 0; i < h.mv.length; i++) {
     const t = h.tStart + i * h.interval;
-    if (t >= until) break;
+    while (k < segs.length && segs[k][1] < t) k++;
+    if (k < segs.length && t >= segs[k][0]) continue;   // lì ci sono già le letture in diretta, più fitte
     out.push([t, h.mv[i]]);
   }
   return out;
@@ -747,41 +831,83 @@ function histSummary(r) {
          (r.status === 'ok' ? '' : ', ' + r.status + ' ' + r.page + '/' + r.total);
 }
 
-async function downloadHistory() {
+// uscita con un programma in corso o finito (le uscite vuote o mai avviate non hanno storico)
+function hasProgram(s) { return !!s && (s.stato >= 2 || s.counter > 0); }
+
+function setHistBusy(on) {
+  histBusy = on;
+  $('btnHist').disabled = on || !isLinked();
+  updateStartButton();                 // niente avvii mentre arrivano i pacchetti (lo stop resta sempre attivo)
+}
+
+// opts.auto: chiesto dall'app (collegamento, ritorno sull'app): solo le uscite con un programma
+async function downloadHistory(opts) {
+  const auto = !!(opts && opts.auto);
   if (histBusy) return;
-  if (!isLinked()) { $('status').textContent = 'Collega prima il caricabatterie'; return; }
-  if (race) { addLog('Storico: non disponibile durante una gara'); return; }
-  if (detecting) { addLog('Storico: attendi il riconoscimento del modello'); return; }
-  histBusy = true;
-  $('btnHist').disabled = true;
+  if (!auto) clearTimeout(autoHistTimer);   // a mano: non serve anche quello automatico in arrivo
+  if (!isLinked()) { if (!auto) $('status').textContent = 'Collega prima il caricabatterie'; return; }
+  if (race) { if (!auto) addLog('Storico: non disponibile durante una gara'); return; }
+  if (detecting) { if (!auto) addLog('Storico: attendi il riconoscimento del modello'); return; }
+  const chans = auto ? CHANNELS.filter(ch => hasProgram(latest[ch])) : CHANNELS.slice();
+  if (!chans.length) { addLog('Storico automatico: nessuna uscita con un programma'); return; }
+  setHistBusy(true);
   const wasPolling = !!pollTimer;
   stopPolling();                       // niente letture 0x91 mentre arrivano i pacchetti
   const results = [];
-  for (const pos of CHANNELS) {
+  for (const pos of chans) {
     if (!isLinked()) break;
     $('status').textContent = 'Storico CH' + pos + '…';
     const r = await requestHistory(pos);
     results.push(r);
     if (r.mv.length) storeHistory(r);
-    addLog('Storico CH' + pos + ': ' + histSummary(r));
+    addLog('Storico CH' + pos + (auto ? ' (automatico)' : '') + ': ' + histSummary(r));
+    // nessuna risposta già alla prima uscita: il firmware non ha lo storico (l'app ufficiale lo usa dal 2.48),
+    // inutile tenere ferme le letture per le altre
+    if (auto && results.length === 1 && r.status === 'nessuna risposta') {
+      addLog('Storico automatico: il caricatore non risponde (serve il firmware 2.48 o successivo)');
+      break;
+    }
   }
   lastHistoryDump = {
-    app: 'NC3000', tipo: 'storico 0x98', modello: currentModel, creato: new Date().toISOString(),
-    canali: results.map(r => ({
-      uscita: r.pos, esito: r.status, intervallo_s: r.interval, pacchetti: r.page + '/' + r.total,
-      campioni: r.mv.length, durata_s: r.mv.length ? (r.mv.length - 1) * r.interval : 0,
-      tensioni_mV: r.mv, pacchetti_hex: r.frames
-    }))
+    app: 'NC3000', tipo: 'storico 0x98', modello: currentModel, automatico: auto, creato: new Date().toISOString(),
+    canali: results.map(r => {
+      const L = latest[r.pos];
+      return {
+        uscita: r.pos, esito: r.status, intervallo_s: r.interval, pacchetti: r.page + '/' + r.total,
+        campioni: r.mv.length, durata_s: r.mv.length ? (r.mv.length - 1) * r.interval : 0,
+        // ultima lettura in diretta: serve a verificare l'aggancio dello storico al tempo del programma
+        diretta: L ? { tempo_programma_s: L.counter, stato: L.stato, modo: L.modo, errore: L.err, tensione_mV: L.mV } : null,
+        tensioni_mV: r.mv, pacchetti_hex: r.frames
+      };
+    })
   };
   $('btnHistSave').disabled = false;
-  histBusy = false;
-  $('btnHist').disabled = !isLinked();
+  setHistBusy(false);
   if (wasPolling && isLinked()) startPolling();
   const got = results.filter(r => r.mv.length);
-  $('status').textContent = got.length
-    ? 'Storico recuperato: ' + got.map(r => 'CH' + r.pos + ' ' + fmtSpan((r.mv.length - 1) * r.interval)).join(' · ')
-    : 'Nessuno storico ricevuto: riprova dopo 5 minuti di programma o a fine ciclo (vedi registro)';
+  if (got.length) {
+    $('status').textContent = 'Storico ' + (auto ? 'scaricato' : 'aggiornato') + ': ' +
+      got.map(r => 'CH' + r.pos + ' ' + fmtSpan((r.mv.length - 1) * r.interval)).join(' · ');
+  } else if (auto) {
+    addLog('Storico automatico: nessun dato ricevuto');
+  } else {
+    $('status').textContent = 'Nessuno storico ricevuto: riprova dopo 5 minuti di programma o a fine ciclo (vedi registro)';
+  }
   drawAll();
+}
+
+// Storico automatico: parte quando ogni uscita ha già una lettura in diretta (serve il tempo
+// del programma per agganciarlo), al massimo ~5 s dopo, poi scarica da solo.
+function scheduleAutoHistory(delayMs) {
+  clearTimeout(autoHistTimer);
+  const deadline = Date.now() + (delayMs || 0) + 5000;
+  const tick = () => {
+    autoHistTimer = null;
+    if (!isLinked() || detecting || race || histBusy) return;
+    if (!CHANNELS.every(ch => latest[ch]) && Date.now() < deadline) { autoHistTimer = setTimeout(tick, 500); return; }
+    downloadHistory({ auto: true });
+  };
+  autoHistTimer = setTimeout(tick, delayMs || 0);
 }
 
 function saveHistory() {
@@ -790,22 +916,63 @@ function saveHistory() {
                JSON.stringify(lastHistoryDump, null, 1), 'application/json');
 }
 
-function seriesOf(kind) {
-  const out = { 1: [], 2: [], 3: [], 4: [], 5: [], 6: [], 7: [], 8: [] };
-  for (const s of samples) if (out[s.ch]) out[s.ch].push([s.t, kind === 'V' ? s.mV / 1000 : s.ir]);
-  for (const ch of CHANNELS) if (out[ch].length > DRAW_POINTS) out[ch] = out[ch].slice(-DRAW_POINTS);
-  // lo storico (solo tensione) va davanti alle letture in diretta
-  if (kind === 'V') for (const ch of CHANNELS) {
-    const hp = historyPoints(ch);
-    if (!hp.length) continue;
-    const step = Math.ceil(hp.length / DRAW_POINTS), pts = [];
-    for (let i = 0; i < hp.length; i += step) pts.push([hp[i][0], hp[i][1] / 1000]);
-    out[ch] = pts.concat(out[ch]);
+// unisce due elenchi [tempo, valore] già in ordine di tempo
+function mergeByTime(a, b) {
+  const out = [];
+  let i = 0, j = 0;
+  while (i < a.length || j < b.length) {
+    if (j >= b.length || (i < a.length && a[i][0] <= b[j][0])) out.push(a[i++]);
+    else out.push(b[j++]);
   }
   return out;
 }
 
-function drawChart(id, series, fmt, refY) {
+// al massimo un punto per ognuno dei «max» tratti di tempo: copre tutta la durata, dall'inizio alla fine
+function decimate(pts, max) {
+  if (pts.length <= max) return pts;
+  const t1 = pts[0][0], span = (pts[pts.length - 1][0] - t1) || 1;
+  const out = [];
+  let last = -1;
+  for (const p of pts) {
+    const b = Math.floor((p[0] - t1) / span * (max - 1));
+    if (b !== last) { out.push(p); last = b; }
+  }
+  if (out[out.length - 1] !== pts[pts.length - 1]) out.push(pts[pts.length - 1]);
+  return out;
+}
+
+function seriesOf(kind) {
+  const out = { 1: [], 2: [], 3: [], 4: [], 5: [], 6: [], 7: [], 8: [] };
+  for (const s of samples) {
+    if (!out[s.ch]) continue;
+    if (kind === 'T') { const tc = tempOf(s); if (tc !== null) out[s.ch].push([s.t, tc]); }
+    else out[s.ch].push([s.t, kind === 'V' ? s.mV / 1000 : s.ir]);
+  }
+  // lo storico (solo tensione) copre la parte prima del collegamento e i buchi della diretta
+  if (kind === 'V') for (const ch of CHANNELS) {
+    const hp = historyPoints(ch);
+    if (hp.length) out[ch] = mergeByTime(hp.map(([t, mv]) => [t, mv / 1000]), out[ch]);
+  }
+  for (const ch of CHANNELS) out[ch] = decimate(out[ch], DRAW_POINTS);
+  return out;
+}
+
+// tacche dell'asse del tempo: passo «tondo» e scritta corta (0, 10 min, 1 h 30…)
+const TICK_STEPS = [10, 30, 60, 120, 300, 600, 900, 1800, 3600, 7200, 10800, 21600, 43200, 86400];
+function tickStep(span, maxTicks) {
+  for (const s of TICK_STEPS) if (span / s <= maxTicks) return s;
+  return TICK_STEPS[TICK_STEPS.length - 1];
+}
+function fmtTick(s) {
+  if (s === 0) return '0';
+  if (s < 60) return s + ' s';
+  if (s < 3600) return Math.round(s / 60) + ' min';
+  const h = Math.floor(s / 3600), m = Math.round((s % 3600) / 60);
+  return m ? h + ' h ' + String(m).padStart(2, '0') : h + ' h';
+}
+
+// markT: istante da segnare con una linea tratteggiata (il collegamento, quando c'è lo storico)
+function drawChart(id, series, fmt, refY, markT) {
   const cv = $(id);
   const dpr = window.devicePixelRatio || 1;
   const w = cv.clientWidth, h = cv.clientHeight;
@@ -833,6 +1000,26 @@ function drawChart(id, series, fmt, refY) {
     ctx.beginPath(); ctx.moveTo(L, Y(refY)); ctx.lineTo(R, Y(refY)); ctx.stroke();
     ctx.fillStyle = '#ff453a'; ctx.fillText(refY + ' mΩ', R - 60, Y(refY) - 4); ctx.restore();
   }
+  // tacche del tempo dall'inizio del grafico (con lo storico: dall'inizio del programma)
+  const st = tickStep(span, Math.max(2, Math.floor((R - L) / 70)));
+  ctx.save();
+  ctx.textAlign = 'center';
+  for (let k = 0; k * st <= span; k++) {
+    const x = X(t1 + k * st);
+    if (k > 0) { ctx.strokeStyle = '#1c1c1c'; ctx.beginPath(); ctx.moveTo(x, T); ctx.lineTo(x, B); ctx.stroke(); }
+    if (x > R - 95) continue;              // a destra c'è la durata totale
+    ctx.fillStyle = '#777'; ctx.fillText(fmtTick(k * st), x, h - 6);
+  }
+  ctx.restore();
+  if (markT !== undefined && markT > t1 && markT < t2) {
+    const x = X(markT), right = x > R - 80;
+    ctx.save();
+    ctx.setLineDash([3, 4]); ctx.strokeStyle = '#4a4a4a';
+    ctx.beginPath(); ctx.moveTo(x, T); ctx.lineTo(x, B); ctx.stroke();
+    ctx.font = '11px sans-serif'; ctx.fillStyle = '#8a8a8a'; ctx.textAlign = right ? 'right' : 'left';
+    ctx.fillText(right ? 'collegato ' : ' collegato', x, B - 5);
+    ctx.restore();
+  }
   ctx.strokeStyle = '#333'; ctx.beginPath(); ctx.moveTo(L, T); ctx.lineTo(L, B); ctx.lineTo(R, B); ctx.stroke();
   ctx.fillStyle = '#aaa';
   ctx.fillText(fmt(y2), 4, T + 8); ctx.fillText(fmt(y1), 4, B);
@@ -850,8 +1037,13 @@ function drawChart(id, series, fmt, refY) {
 }
 
 function drawAll() {
-  drawChart('chartV', seriesOf('V'), v => v.toFixed(3) + ' V');
+  const hasHist = CHANNELS.some(ch => histData[ch]);
+  drawChart('chartV', seriesOf('V'), v => v.toFixed(3) + ' V', undefined, hasHist ? 0 : undefined);
   drawChart('chartT', seriesOf('R'), v => v.toFixed(0) + ' mΩ', 40);
+  // temperatura dei canali: compare solo se il firmware la manda (byte 8)
+  const box = $('chartTempBox');
+  if (box) box.style.display = tempSeen ? '' : 'none';
+  if (tempSeen) drawChart('chartTemp', seriesOf('T'), v => v.toFixed(0) + ' °C');
 }
 
 function startPolling() {
@@ -884,6 +1076,7 @@ function stopPolling() {
 // connessione persa (caricabatterie spento o fuori portata)
 function onDisconnect() {
   stopPolling();
+  clearTimeout(autoHistTimer);
   char = null;   // così i pulsanti non risultano più collegati
   if (race) {
     addLog('Connessione persa durante la gara: il caricabatterie potrebbe continuare il programma. Riconnettiti e ferma le uscite.');
@@ -940,7 +1133,8 @@ async function connect() {
     char = await svc.getCharacteristic(CHR);
     useWnR = !!char.properties.writeWithoutResponse;
     if (!useWnR && !char.properties.write) throw new Error('caratteristica non scrivibile');
-    rxBuf = []; samples = []; latest = {}; histData = {}; lastHistoryDump = null;
+    rxBuf = []; samples = []; latest = {}; histData = {}; lastHistoryDump = null; tempSeen = false;
+    clearTimeout(autoHistTimer);
     txCount = 0; rxOk = 0; rxBad = 0; logLines = [];
     t0 = Date.now();
     $('tx').textContent = 0; $('rxok').textContent = 0; $('rxbad').textContent = 0;
@@ -1022,6 +1216,7 @@ function confirmText(id) {
 function startReasons() {
   const why = [];
   if (!isLinked()) why.push('Connetti prima il caricabatterie');
+  if (histBusy) why.push('attendi lo storico');
   if (previewedKey === null) why.push('Genera l\'anteprima dopo aver impostato i valori');
   else if (previewedKey !== JSON.stringify(readParams())) why.push('I valori sono cambiati: rigenera l\'anteprima');
   if (!$('chkStart').checked) why.push('Spunta la casella di verifica');
@@ -1031,6 +1226,7 @@ function startReasons() {
 function startAllReasons() {
   const why = [];
   if (!isLinked()) why.push('Connetti prima il caricabatterie');
+  if (histBusy) why.push('attendi lo storico');
   if (previewedAllKey === null) why.push('Genera l\'anteprima');
   else if (previewedAllKey !== JSON.stringify(Object.assign({}, readParams(), { position: 0 }))) why.push('valori cambiati: rigenera l\'anteprima');
   if (!$('chkAll').checked) why.push('spunta la conferma');
@@ -1094,16 +1290,20 @@ function stopAll() {
   for (const pos of CHANNELS) stopChannel(pos);
 }
 
+// tempo_s: secondi dal collegamento (negativi = parte del programma prima del collegamento, dallo storico)
 function csvRows() {
-  const rows = ['tempo_s,canale,tensione_mV,corrente_mA,resistenza_mOhm,capacita_mAh,dV_mV,stato,modo,errore,hex'];
-  // storico recuperato dal caricatore (solo tensione), prima delle letture in diretta
+  const rows = [];
+  // storico recuperato dal caricatore (solo tensione): prima del collegamento e nei buchi della diretta
   for (const ch of CHANNELS) for (const [t, mv] of historyPoints(ch)) {
-    rows.push([t.toFixed(3), 'CH' + ch, mv, '', '', '', '', '', '', '', 'storico'].join(','));
+    rows.push([t, [t.toFixed(3), 'CH' + ch, mv, '', '', '', '', '', '', '', '', 'storico'].join(',')]);
   }
   for (const s of samples) {
-    rows.push([s.t.toFixed(3), 'CH' + s.ch, s.mV, s.mA, s.ir, s.cap, s.dV, s.stato, s.modo, s.err, s.hex.replace(/ /g, '')].join(','));
+    const tc = tempOf(s);
+    rows.push([s.t, [s.t.toFixed(3), 'CH' + s.ch, s.mV, s.mA, s.ir, s.cap, s.dV, s.stato, s.modo, s.err, tc === null ? '' : tc,
+                     s.hex.replace(/ /g, '')].join(',')]);
   }
-  return rows;
+  rows.sort((a, b) => a[0] - b[0]);
+  return ['tempo_s,canale,tensione_mV,corrente_mA,resistenza_mOhm,capacita_mAh,dV_mV,stato,modo,errore,temperatura_C,hex'].concat(rows.map(r => r[1]));
 }
 
 function exportCsv() {
@@ -1142,7 +1342,10 @@ $('btnConnect').onclick = connect;
 $('btnPoll').onclick = startPolling;
 $('btnDisc').onclick = disconnect;
 $('btnExport').onclick = exportCsv;
-$('btnHist').onclick = downloadHistory;
+$('btnHist').onclick = () => downloadHistory();
+$('fwSel').onchange = () => setFirmware($('fwSel').value);
+$('chartV').onclick = () => { $('chartV').classList.toggle('big'); drawAll(); };
+if (window.addEventListener) window.addEventListener('resize', () => drawAll());
 $('btnHistSave').onclick = saveHistory;
 $('btnPreview').onclick = () => { saveParams(); renderPreview(); };
 $('btnStart').onclick = startProgram;
@@ -1209,6 +1412,7 @@ function raceReasons() {
   const why = [];
   if (!isLinked()) why.push('Connetti il caricabatterie');
   if (race) why.push('gara già in corso');
+  if (histBusy) why.push('attendi lo storico');
   if (!CHANNELS.some(ch => $('r_ch' + ch).checked)) why.push('seleziona almeno un\'uscita');
   const q = raceParams();
   if (!(q.seconds >= 5 && q.seconds <= 120)) why.push('durata tra 5 e 120 s');
@@ -1234,9 +1438,10 @@ function updateRaceButton() {
 function isNum(v) { return typeof v === 'number' && isFinite(v); }
 function unitStr(v, d, unit) { return isNum(v) ? fmt(v, d) + unit : '—'; }
 
-// temperatura: nei pacchetti non è presente (byte 8–9 = −ΔV)
+// temperatura del canale: byte 8 del pacchetto 0x91, in °C. Il firmware originale (e il v7) ci mette sempre 0;
+// appena un firmware ci scrive i gradi, l'app li mostra in schede, grafico, CSV e gare.
 function tempOf(s) {
-  if (isNum(s.tempC) && s.tempC > 0) return s.tempC; // presente solo con il firmware modificato (byte 8 del pacchetto)
+  if (isNum(s.tempC) && s.tempC > 0) return s.tempC;
   return null;
 }
 
@@ -2398,9 +2603,16 @@ async function keepAwake(on) {
     }
   } catch (e) { addLog('Schermo sempre acceso non attivo: ' + e.message); }
 }
+let hiddenAt = 0;
 if (document.addEventListener) {
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible' && device && device.gatt && device.gatt.connected) keepAwake(true);
+    if (document.visibilityState === 'hidden') { hiddenAt = Date.now(); return; }
+    if (document.visibilityState === 'visible' && device && device.gatt && device.gatt.connected) {
+      keepAwake(true);
+      // in secondo piano le letture rallentano o si fermano: lo storico riempie i buchi
+      if (hiddenAt && Date.now() - hiddenAt >= HIST_AUTO_HIDDEN_MS) scheduleAutoHistory(1500);
+    }
+    hiddenAt = 0;
   });
 }
 
@@ -2438,10 +2650,12 @@ function diagShow() {
   lines.push('');
   lines.push(octa
     ? 'Ogni canale è un blocco di 17 byte (il primo è il byte 0): 0–1 corrente · 2–3 tensione · 4–5 −ΔV · 6–7 mAh · 8–11 secondi · 12–13 resistenza · 14 stato · 15 modo · 16 errore'
-    : 'Byte: 4–5 corrente · 6–7 tensione · 8–9 −ΔV · 10–11 mAh · 12–15 secondi · 16–17 resistenza · 18 stato · 19 modo · 20 errore');
+    : 'Byte: 4–5 corrente · 6–7 tensione · 8 temperatura °C (0 = non inviata) · 9 −ΔV · 10–11 mAh · 12–15 secondi · 16–17 resistenza · 18 stato · 19 modo · 20 errore');
   lines.push('');
-  lines.push('Temperatura: il caricabatterie non trasmette un valore separato. L\'app ufficiale mostra lo stesso numero dei byte −ΔV sia in mV sia in °C. ' +
-    'Se in scarica quel valore resta tra 20 e 45 e sale piano, è la temperatura; se è 0 o varia solo a fine carica, è −ΔV.');
+  lines.push(octa ? 'Temperatura: lo stato dell\'Octa non ha un campo per la temperatura dei canali.'
+    : 'Temperatura: ' + (tempSeen ? 'il caricatore la manda nel byte 8, l\'app la mostra.'
+      : 'il byte 8 è sempre 0: questo firmware non manda i gradi dei canali via Bluetooth (l\'originale e il v7 non lo fanno). ' +
+        'Se un firmware ci scrive i gradi del canale (numero intero, es. 24 = 24 °C), l\'app li mostra da sola.'));
   $('diagOut').textContent = lines.join('\n');
 }
 $('btnDiag').onclick = diagShow;
@@ -2626,8 +2840,7 @@ function handleStatusFrame(f) {
   if (currentModel === 'octa') {
     for (const s of slots) {
       s.t = t;
-      samples.push(s);
-      if (samples.length > MAX_SAMPLES) samples.shift();
+      pushSample(s);
       latest[s.ch] = s;
       checkAlarms(s);
     }
@@ -2715,7 +2928,10 @@ function detectionDone(model, note) {
     if (changed && pollTimer) { stopPolling(); startPolling(); } // riparte col protocollo giusto
   }
   if (note) $('status').textContent = note;
-  if (isLinked()) startPolling(); // letture automatiche appena riconosciuto il modello
+  if (isLinked()) {
+    startPolling();               // letture automatiche appena riconosciuto il modello
+    scheduleAutoHistory(1500);    // poi lo storico, per avere il ciclo dall'inizio
+  }
 }
 
 // risposta al comando 0x57 (codice modello)
