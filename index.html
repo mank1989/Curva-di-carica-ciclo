@@ -230,7 +230,7 @@
     <div class="group">
       <h3>Parametri</h3>
       <div class="row" data-modes="0 3"><label>Capacità</label><div class="val"><input type="number" id="p_capacity" value="950" inputmode="numeric"><span class="unit">mAh</span></div></div>
-      <div class="row" data-modes="0 3"><label>Carica a</label><div class="val"><input type="number" id="p_chargeE" value="0.50" step="0.05" inputmode="decimal"><span class="unit">A</span></div></div>
+      <div class="row" data-modes="0 3"><label>Carica a<small class="hint" id="p_chargeMax">max 2,50 A</small></label><div class="val"><input type="number" id="p_chargeE" value="0.50" step="0.05" max="2.50" inputmode="decimal"><span class="unit">A</span></div></div>
       <div class="row" data-modes="1 3"><label>Scarica a<small class="hint" id="p_dischargeMax">max 2,80 A</small></label><div class="val"><input type="number" id="p_dischargeE" value="2.50" step="0.05" inputmode="decimal"><span class="unit">A</span></div></div>
       <div class="row" data-modes="0 3"><label>Corrente di spegnimento<small class="hint">0 = spento</small></label><div class="val"><input type="number" id="p_inStopCurrent" value="0" step="0.01" inputmode="decimal"><span class="unit">A</span></div></div>
       <div class="row" data-modes="0 3"><label>Target Voltage</label><div class="val"><input type="number" id="p_inStopVoltage" value="1.70" step="0.01" inputmode="decimal"><span class="unit">V</span></div></div>
@@ -391,7 +391,7 @@ const WRITE_GAP_MS = 150;
 // Pro col firmware originale SkyRC 2,5 A e 3 cicli, col firmware modificato 2,8 A e 10 cicli;
 // Octa 2,5 A. Vedi maxDischargeMa() e maxCycles().
 const LIMITS = {
-  position: [1, 8], model: [0, 255], chargeE: [100, 1000], dischargeE: [100, 2800],
+  position: [1, 8], model: [0, 255], chargeE: [100, 2500], dischargeE: [100, 2800],
   capacity: [100, 5000], inStopVoltage: [1400, 1750], outStopVoltage: [900, 1200],
   inStopCurrent: [0, 300], outStopCurrent: [0, 2800], chargeRestTime: [0, 60],
   dischargeRestTime: [0, 60], cycleCount: [1, 10], cycleMode: [0, 3], detalV: [3, 15],
@@ -420,11 +420,15 @@ let tempSeen = false;       // il caricatore manda la temperatura dei canali (by
 // Massimi per modello e firmware: Pro originale 2,5 A e 3 cicli, Pro modificato 2,8 A e 10 cicli, Octa 2,5 A
 function maxDischargeMa() { return currentModel === 'octa' ? 2500 : (proFirmware === 'mod' ? 2800 : 2500); }
 function maxCycles() { return currentModel === 'octa' ? LIMITS.cycleCount[1] : (proFirmware === 'mod' ? 10 : 3); }
+// Carica: Pro 2,5 A con entrambi i firmware (il menu del caricatore arriva a 3,0 A), Octa invariato a 1,0 A
+function maxChargeMa() { return currentModel === 'octa' ? 1000 : 2500; }
 function fwLabel() { return currentModel === 'octa' ? 'su questo caricabatterie' : (proFirmware === 'mod' ? 'col firmware modificato' : 'col firmware originale'); }
 function ampTxt(ma) { return (ma / 1000).toFixed(2).replace('.', ',') + ' A'; }
 function updateDischargeHints() {
   const t = 'max ' + ampTxt(maxDischargeMa());
   for (const id of ['p_dischargeMax', 'r_dischargeMax']) { const e = $(id); if (e) e.textContent = t; }
+  const ch = $('p_chargeMax'); if (ch) ch.textContent = 'max ' + ampTxt(maxChargeMa());
+  const ci = $('p_chargeE'); if (ci) ci.max = (maxChargeMa() / 1000).toFixed(2);
   const c = $('p_cycleMax'); if (c) c.textContent = 'max ' + maxCycles();
   const cc = $('p_cycleCount'); if (cc) cc.max = String(maxCycles());
   const fh = $('fwHint'); if (fh) fh.textContent = 'scarica max ' + ampTxt(maxDischargeMa()) + ' · cicli max ' + maxCycles();
@@ -507,6 +511,9 @@ function validate(p) {
     const v = p[k];
     const ok = (Number.isFinite(v) && v >= lo && v <= hi && Number.isInteger(v)) || (k === 'capacity' && p.model === 1 && v === 0);
     if (!ok) { errs.push(k + ': valore fuori da ' + lo + '–' + hi); bad.push(k); }
+  }
+  if (Number.isFinite(p.chargeE) && p.chargeE > maxChargeMa() && !bad.includes('chargeE')) {
+    errs.push('carica massima ' + ampTxt(maxChargeMa()) + ' su questo caricabatterie'); bad.push('chargeE');
   }
   if (Number.isFinite(p.dischargeE) && p.dischargeE > maxDischargeMa() && !bad.includes('dischargeE')) {
     errs.push('scarica massima ' + ampTxt(maxDischargeMa()) + ' ' + fwLabel()); bad.push('dischargeE');
