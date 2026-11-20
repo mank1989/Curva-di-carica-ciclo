@@ -1097,6 +1097,7 @@ function handleFrame(f) {
     return;
   }
   if (f[2] === CMD_HISTORY) { handleHistoryFrame(f); return; }
+  if (f[2] === CMD_INFO) { lateInfo(f); return; }
   if (f[2] !== CMD_NC_DATA) {
     addLog(t.toFixed(1).padStart(8) + ' s  RX risposta comando ' + f[2].toString(16) + '  ' + hex(f));
     return;
@@ -1124,6 +1125,7 @@ function handleFrame(f) {
   };
   pushSample(s);
   latest[ch] = s;
+  proDataSeen = true;
   if (s.tempC) tempSeen = true;
   checkAlarms(s);
   addLog(t.toFixed(1).padStart(8) + ' s  CH' + ch + '  ' + (s.mV / 1000).toFixed(3) + ' V  ' +
@@ -1569,6 +1571,7 @@ function onDisconnect() {
   // durante la scrittura del firmware il caricatore si riavvia: si ricollega da solo l'aggiornamento
   if (fw.busy) { char = null; markLinked(false); fwLog('Bluetooth scollegato'); return; }
   stopPolling();
+  stopModelProbes(); detecting = false; octaProbing = false;
   clearTimeout(autoHistTimer);
   char = null;   // così i pulsanti non risultano più collegati
   if (race) {
@@ -3388,9 +3391,11 @@ function handleStatusFrame(f) {
     return;
   }
   rxOk++; $('rxok').textContent = rxOk;
-  if (octaProbing) { // una risposta di stato valida = è un Octa
+  if (octaProbing || detecting) { // una risposta di stato valida = è un Octa
     octaProbing = false; clearTimeout(octaProbeTimer);
     detectionDone('octa', 'Rilevato ' + MODEL_DEF.octa.label + ' (dalla risposta di stato)');
+  } else if (currentModel !== 'octa') {
+    lateModel('octa', 'Rilevato ' + MODEL_DEF.octa.label + ' (risposta di stato arrivata in ritardo)');
   }
   const lines = slots.map(s => {
     const stato = STATO_LABEL[s.stato] || ('stato ' + s.stato);
@@ -3456,11 +3461,29 @@ applyModel(localStorage.getItem(MODEL_KEY) || 'pro');
 /* ===================== RILEVAMENTO AUTOMATICO DEL MODELLO ===================== */
 // Alla connessione la app riconosce da sola il modello e imposta i canali:
 //  1) legge il codice modello (0x57): 100209 = Pro (4 canali), 100228 = Octa (8 canali);
-//  2) se il codice non arriva o è sconosciuto, prova una lettura di stato 0x9A (sola lettura):
+//  2) se il codice non arriva subito, prova anche la lettura di stato 0x9A (sola lettura), più volte:
 //     solo un vero Octa risponde con 142 byte validi;
-//  3) se non risponde nulla, imposta il Pro e mostra un tastino per correggere a mano.
+//  3) se non risponde nulla usa il modello ricordato per quel caricatore, altrimenti il Pro, e chiede
+//     di scegliere; intanto continua a provare: una risposta che arriva tardi corregge da sola.
 const MODEL_BY_CODE = { '100209': 'pro', '100228': 'octa' };
+const DEV_MODEL_KEY = 'nc3000_model_by_device_v1';   // modello ricordato per ogni caricatore (id Bluetooth)
 let detecting = false, octaProbing = false, octaProbeTimer = null;
+let detectProbeTimer = null, detectProbes = 0, fallbackProbeTimer = null, proDataSeen = false;
+
+function rememberModel(m) {
+  try {
+    if (!device || !device.id || !MODEL_DEF[m]) return;
+    const all = JSON.parse(localStorage.getItem(DEV_MODEL_KEY) || '{}');
+    all[device.id] = m;
+    localStorage.setItem(DEV_MODEL_KEY, JSON.stringify(all));
+  } catch (e) { /* ignora */ }
+}
+function rememberedModel() {
+  try {
+    const all = JSON.parse(localStorage.getItem(DEV_MODEL_KEY) || '{}');
+    return device && device.id && MODEL_DEF[all[device.id]] ? all[device.id] : null;
+  } catch (e) { return null; }
+}
 
 function setPollReady(ready, note) {
   const b = $('btnPoll');
@@ -3469,29 +3492,54 @@ function setPollReady(ready, note) {
   if (note) $('status').textContent = note;
 }
 
+function stopModelProbes() {
+  clearTimeout(octaProbeTimer); clearTimeout(detectProbeTimer); clearInterval(fallbackProbeTimer);
+  octaProbeTimer = null; detectProbeTimer = null; fallbackProbeTimer = null;
+}
+
 // avvio del rilevamento, chiamato da connect()
 function startDetection() {
   if (!isLinked()) return;
-  detecting = true; octaProbing = false;
-  clearTimeout(octaProbeTimer);
+  detecting = true; octaProbing = false; proDataSeen = false;
+  stopModelProbes();
   $('modelPick').style.display = 'none';
+  const known = rememberedModel();
+  if (known && known !== currentModel) applyModel(known);   // le uscite giuste già da subito
   setPollReady(false, 'Rilevamento del modello in corso…');
   requestModel();
+  // se il codice modello non arriva presto provo anche lo stato dell'Octa: alcuni rispondono in ritardo
+  detectProbes = 0;
+  detectProbeTimer = setTimeout(earlyOctaProbe, 1500);
+}
+function earlyOctaProbe() {
+  detectProbeTimer = null;
+  if (!detecting || !isLinked()) return;
+  detectProbes++;
+  octaProbing = true;
+  sendSafe(CMD_STATUS_OCTA, [0x00], 'rilevamento 0x9A (' + detectProbes + ')');
+  if (detectProbes < 3) detectProbeTimer = setTimeout(earlyOctaProbe, 3000);
 }
 
-// esito del rilevamento: applica il modello, aggiorna l'etichetta e riabilita le letture
-function detectionDone(model, note) {
+// esito del rilevamento: applica il modello, aggiorna l'etichetta e riabilita le letture.
+// guess = nessuna risposta: modello ipotizzato, si chiede conferma e si continua a provare
+function detectionDone(model, note, guess) {
   detecting = false; octaProbing = false;
-  clearTimeout(octaProbeTimer);
+  stopModelProbes();
   if (model) {
     const changed = model !== currentModel;
     applyModel(model);
     showModelName(true);
+    if (!guess) rememberModel(model);
     if (changed && pollTimer) { stopPolling(); startPolling(); } // riparte col protocollo giusto
+  }
+  if (guess) {
+    $('modelName').textContent = 'Caricabatterie';
+    $('modelSub').textContent = 'Modello non riconosciuto: scegli qui sotto se è un Pro o un Octa';
   }
   if (note) $('status').textContent = note;
   if (isLinked()) {
     startPolling();               // letture automatiche appena riconosciuto il modello
+    if (guess) { $('status').textContent = note; startFallbackProbe(); }
     if (fw.open) {                // collegato dalla pagina del firmware: un giro di letture per vedere le uscite, poi la lettura del caricatore
       fw.dev = 'detecting'; fwRender();
       setTimeout(() => fwAttach(), 1300);
@@ -3519,9 +3567,56 @@ function probeOcta(code) {
   octaProbeTimer = setTimeout(() => {
     if (!octaProbing) return;
     octaProbing = false;
-    detectionDone('pro', 'Modello non riconosciuto: imposto ' + MODEL_DEF.pro.label + '. Se è un Octa, toccalo qui sotto.');
-    $('modelPick').style.display = '';
-  }, 2500);
+    const known = rememberedModel();
+    if (known) {
+      detectionDone(known, 'Modello non letto: uso ' + MODEL_DEF[known].label + ', scelto l\'ultima volta per questo caricatore');
+      $('modelSub').textContent = MODEL_DEF[known].n + ' uscite, come l\'ultima volta (il modello non ha risposto)';
+    } else {
+      detectionDone('pro', 'Modello non riconosciuto: scegli Pro o Octa nel pannello', true);
+      $('modelPick').style.display = '';
+    }
+  }, 3500);
+}
+
+// dopo un modello ipotizzato: se il Pro non risponde alle letture, riprovo ogni tanto lo stato dell'Octa
+function startFallbackProbe() {
+  clearInterval(fallbackProbeTimer);
+  let n = 0;
+  fallbackProbeTimer = setInterval(() => {
+    n++;
+    if (!isLinked() || currentModel !== 'pro' || proDataSeen || n > 8) { clearInterval(fallbackProbeTimer); fallbackProbeTimer = null; return; }
+    if (!race && !histBusy) sendSafe(CMD_STATUS_OCTA, [0x00], 'riprova stato Octa');
+  }, 4000);
+}
+
+// il modello giusto arriva dopo il rilevamento (risposta in ritardo): correggo da solo
+function lateModel(m, note) {
+  if (m === currentModel) { rememberModel(m); return; }
+  if (race) { addLog(note + ': gara in corso, il modello non cambia ora'); return; }
+  addLog(note);
+  stopModelProbes();
+  $('modelPick').style.display = 'none';
+  const wasPolling = !!pollTimer;
+  applyModel(m);
+  showModelName(true);
+  rememberModel(m);
+  if (wasPolling) { stopPolling(); startPolling(); }
+  $('status').textContent = note;
+  if (isLinked() && !fw.open) scheduleAutoHistory(1500);
+}
+
+// risposta 0x57 arrivata fuori dal rilevamento
+function lateInfo(f) {
+  const code = modelCodeFrom(f);
+  lastInfo = { hex: hex(f), code, via: 'risposta in ritardo' };
+  lastInfoAt = Date.now();
+  renderModel();
+  addLog('RX informazioni (in ritardo) ' + hex(f));
+  const m = code ? MODEL_BY_CODE[code] : null;
+  if (!m) return;
+  const note = 'Rilevato ' + MODEL_DEF[m].label + ' (codice ' + code + ')';
+  if (detecting) detectionDone(m, note);
+  else lateModel(m, note);
 }
 
 $('btnPickPro').onclick = () => { $('modelPick').style.display = 'none'; detectionDone('pro', 'Impostato ' + MODEL_DEF.pro.label); };
