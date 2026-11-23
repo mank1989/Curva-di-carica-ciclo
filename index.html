@@ -828,7 +828,11 @@ let tempSeen = false;       // il caricatore manda la temperatura dei canali (by
 
 // Massimi per modello e firmware: Pro originale 2,5 A e 3 cicli, Pro modificato 2,8 A e 10 cicli, Octa 2,5 A
 function maxDischargeMa() { return currentModel === 'octa' ? 2500 : (proFirmware === 'mod' ? 2800 : 2500); }
-function maxCycles() { return currentModel === 'octa' ? LIMITS.cycleCount[1] : (proFirmware === 'mod' ? 10 : 3); }
+function maxCycles() { return currentModel === 'octa' ? OCTA_LIMITS.cycleCount[1] : (proFirmware === 'mod' ? 10 : 3); }
+// Octa: limiti della sua schermata nell'app ufficiale SkyRC (Nc228): correnti da 0,2 A, al massimo 3 cicli,
+// «Capacità massima» 250–350 mAh (buona per tutte le versioni del firmware dell'Octa)
+const OCTA_LIMITS = { chargeE: [200, 3000], dischargeE: [200, 2500], cycleCount: [1, 3], inMaxbostCapacity: [250, 350] };
+function limitsFor(k) { return currentModel === 'octa' && OCTA_LIMITS[k] ? OCTA_LIMITS[k] : LIMITS[k]; }
 // Carica: 3,0 A come il menu del caricatore (Pro con entrambi i firmware, Octa uguale)
 function maxChargeMa() { return 3000; }
 function fwLabel() { return currentModel === 'octa' ? 'su questo caricabatterie' : (proFirmware === 'mod' ? 'col firmware modificato' : 'col firmware originale'); }
@@ -952,12 +956,17 @@ function validateDetailed(p) {
     if (!shown(k)) continue;
     const el = $('p_' + k);
     const v = p[k];
-    const [lo, hiAbs] = LIMITS[k];
+    const [lo, hiAbs] = limitsFor(k);
     const hi = effMax[k] !== undefined ? Math.min(hiAbs, effMax[k]) : hiAbs;
     if (!Number.isFinite(v)) { add(k, el && String(el.value).trim() === '' ? 'inserisci un valore' : 'valore non valido'); continue; }
     if (!Number.isInteger(v)) { add(k, 'serve un numero intero'); continue; }
     if (v > hi && hi < hiAbs) { add(k, 'massimo ' + fieldTxt(k, hi) + ' ' + fwLabel()); continue; }
     if (v < lo || v > hi) { add(k, 'deve stare tra ' + fieldTxt(k, lo) + ' e ' + fieldTxt(k, hi)); continue; }
+  }
+  // Octa: la corrente di fine scarica è 0 (uguale alla scarica) oppure tra 0,20 A e la corrente di scarica
+  if (currentModel === 'octa' && p.model === 1 && p.outStopCurrent > 0 &&
+      (p.outStopCurrent < 200 || p.outStopCurrent > p.dischargeE)) {
+    add('outStopCurrent', 'sull\'Octa 0 oppure tra 0,20 A e ' + fieldTxt('dischargeE', p.dischargeE));
   }
   if (p.model === 3 && Number.isFinite(p.outStopVoltage) && p.outStopVoltage >= p.inStopVoltage) {
     add('outStopVoltage', 'deve essere più bassa della Target Voltage (' + fieldTxt('inStopVoltage', p.inStopVoltage) + ')');
@@ -986,7 +995,7 @@ function safeParams(p) {
   for (const k of Object.keys(LIMITS)) {
     if (k === 'position' || k === 'model') continue;
     if (k === 'capacity' && q.model === 1 && q.capacity === 0) continue;   // in scarica 0 = spento
-    const [lo, hi] = LIMITS[k];
+    const [lo, hi] = limitsFor(k);
     let v = Number(q[k]);
     if (!Number.isFinite(v)) v = k === 'tempProtect' ? 60 : lo;
     q[k] = Math.round(Math.min(hi, Math.max(lo, v)));
@@ -995,6 +1004,7 @@ function safeParams(p) {
   q.dischargeE = Math.min(q.dischargeE, maxDischargeMa());
   q.outStopCurrent = Math.min(q.outStopCurrent, maxDischargeMa());
   q.cycleCount = Math.min(q.cycleCount, maxCycles());
+  if (currentModel === 'octa' && q.outStopCurrent > 0) q.outStopCurrent = Math.min(q.dischargeE, Math.max(200, q.outStopCurrent));
   return q;
 }
 
@@ -1023,6 +1033,16 @@ function buildSettings(p) {
   be(27, p.inTimeProtect);
   be(29, p.inMaxbostCapacity);
   b[31] = p.truboMode;
+  if (currentModel === 'octa') {
+    // L'app ufficiale costruisce il comando dell'Octa con valori in più rispetto al Pro
+    // (schermata Nc228, Nc3000SetBean con is209Type e is280Type): li mando uguali.
+    if (p.model === 1) be(6, 0);        // scarica: capacità 0, come l'app ufficiale
+    if (p.model === 1) { be(16, 0); be(18, 0); }   // scarica: nessuna pausa (le pause servono solo al ciclo)
+    if (p.model !== 3) b[20] = 1;       // fuori dal ciclo: 1 ciclo
+    if (!p.restartVolt) be(24, 1290);   // tensione di ripartenza: 0 diventa 1,29 V
+    b[32] = 80;                         // carica a due stadi: 80 %…
+    be(33, 800);                        // …poi 0,80 A (valori predefiniti dell'app ufficiale)
+  }
   return b;
 }
 
@@ -2324,7 +2344,11 @@ function raceStart() {
     addLog('Attenzione: tensione a riposo diversa di ' + (Math.max(...restMv) - Math.min(...restMv)) + ' mV tra le uscite selezionate');
   }
   race = { N, chans, I: rp.dischargeE / 1000, tStart: {}, names: {}, stopped: 0, running: true, pollIdx: 0 };
-  race.startMs = Date.now();
+  // Pro: scarica subito, il cronometro parte all'invio. Octa: può restare qualche istante «a riposo»,
+  // quindi ogni uscita parte quando arriva davvero in scarica (vedi raceOctaSample)
+  race.waitStart = currentModel === 'octa' ? {} : null;
+  race.gaveUp = {};
+  race.startMs = race.waitStart ? null : Date.now();
   race.lastBeep = null;
   race.endSignaled = false;
   for (const ch of CHANNELS) race.names[ch] = $('r_name' + ch).value.trim() || ('Uscita ' + ch);
@@ -2333,10 +2357,13 @@ function raceStart() {
   for (const ch of chans) {
     const queued = sendSafe(CMD_START, Array.from(buildSettings(Object.assign({}, rp, { position: ch }))), 'gara CH' + ch, (ms) => {
       if (!race) return;
+      if (race.waitStart) {            // Octa: aspetto che l'uscita passi in scarica
+        race.waitStart[ch] = (ms - t0) / 1000;
+        raceStopTimers.push(setTimeout(() => raceStartTimeout(ch), RACE_START_WAIT_S * 1000));
+        return;
+      }
       race.tStart[ch] = (ms - t0) / 1000;
-      raceStopTimers.push(setTimeout(() => {
-        if (!sendSafe(CMD_STOP, [slotByte(ch)], 'stop gara CH' + ch, markStopped)) markStopped();
-      }, N * 1000));
+      raceStopTimers.push(setTimeout(() => raceStopChannel(ch), N * 1000));
     });
     // uscita non avviata: non deve tenere aperta la gara
     if (!queued) { markStopped(); addLog('Uscita CH' + ch + ' non avviata nella gara'); }
@@ -2351,8 +2378,39 @@ function raceStart() {
     }
     race.pollIdx++;
   }, currentModel === 'octa' ? 200 : 120);
-  $('raceStatus').textContent = 'Gara in corso su ' + chans.length + ' uscit' + (chans.length > 1 ? 'e' : 'a') + ' · ' + N + ' s';
+  race.statusTxt = 'Gara in corso su ' + chans.length + ' uscit' + (chans.length > 1 ? 'e' : 'a') + ' · ' + N + ' s';
+  $('raceStatus').textContent = race.waitStart ? 'Comando inviato: aspetto che l\'Octa passi in scarica…' : race.statusTxt;
   updateRaceButton();
+}
+
+const RACE_START_WAIT_S = 30;   // Octa: tempo massimo per passare in scarica dopo il comando
+
+function raceStopChannel(ch) {
+  if (!sendSafe(CMD_STOP, [slotByte(ch)], 'stop gara CH' + ch, markStopped)) markStopped();
+}
+
+// Octa: ogni lettura di stato durante la gara; la prima in scarica fa partire il cronometro di quell'uscita
+function raceOctaSample(s) {
+  if (!race || !race.waitStart || race.waitStart[s.ch] === undefined || race.tStart[s.ch] !== undefined || race.gaveUp[s.ch]) return;
+  if (s.stato === 3 || s.mA > 0) {
+    race.tStart[s.ch] = s.t;
+    if (!race.startMs) { race.startMs = Date.now(); $('raceStatus').textContent = race.statusTxt; }
+    raceStopTimers.push(setTimeout(() => raceStopChannel(s.ch), race.N * 1000));
+    addLog('Gara: CH' + s.ch + ' in scarica dopo ' + (s.t - race.waitStart[s.ch]).toFixed(1) + ' s dal comando');
+  } else if (!race.startMs) {
+    $('raceStatus').textContent = 'In attesa della scarica: CH' + s.ch + ' ' + (STATO_LABEL[s.stato] || ('stato ' + s.stato)) + '…';
+  }
+}
+
+// Octa: l'uscita non è passata in scarica in tempo: la fermo e lo dico
+function raceStartTimeout(ch) {
+  if (!race || race.tStart[ch] !== undefined || race.gaveUp[ch]) return;
+  race.gaveUp[ch] = true;
+  const st = latest[ch] ? (STATO_LABEL[latest[ch].stato] || ('stato ' + latest[ch].stato)) : 'nessuna lettura';
+  const msg = 'CH' + ch + ' non è passata in scarica entro ' + RACE_START_WAIT_S + ' s (' + st + '): fermata';
+  addLog('Gara: ' + msg);
+  showAlarm(msg);
+  raceStopChannel(ch);
 }
 
 function raceCheckEnd() {
@@ -2370,9 +2428,7 @@ function raceAbort() {
   raceStopTimers = [];
   // senza collegamento non si può fermare nulla: chiudo la gara con i dati raccolti
   if (!isLinked()) { addLog('Gara chiusa: caricabatterie non collegato, non posso inviare lo stop'); raceFinish(); return; }
-  for (const ch of race.chans) {
-    if (!sendSafe(CMD_STOP, [slotByte(ch)], 'stop gara CH' + ch, markStopped)) markStopped();
-  }
+  for (const ch of race.chans) raceStopChannel(ch);
 }
 
 function raceFinish() {
@@ -3410,6 +3466,7 @@ function handleStatusFrame(f) {
       pushSample(s);
       latest[s.ch] = s;
       checkAlarms(s);
+      raceOctaSample(s);
     }
     renderLatest();
     if (performance.now() - lastDraw > 500) { lastDraw = performance.now(); drawAll(); }
