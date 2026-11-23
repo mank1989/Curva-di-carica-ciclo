@@ -1565,6 +1565,7 @@ function startPolling() {
     pollTimer = setInterval(() => { try { enqueue(CMD_STATUS_OCTA, [0x00], '0x9A'); } catch (e) { addLog(e.message); } }, 1000);
     beatTimer = setInterval(() => { try { enqueue(CMD_HEARTBEAT, [0x00], '0xEE'); } catch (e) { addLog(e.message); } }, 3000);
     $('btnPoll').disabled = true;
+    $('btnPoll').textContent = 'Letture in corso';
     $('status').textContent = MODEL_DEF.octa.label + ' · letture in corso';
     return;
   }
@@ -1577,6 +1578,7 @@ function startPolling() {
     try { enqueue(CMD_HEARTBEAT, [0x00], '0xEE'); } catch (e) { addLog(e.message); }
   }, 3000);
   $('btnPoll').disabled = true;
+  $('btnPoll').textContent = 'Letture in corso';
   $('status').textContent = MODEL_DEF[currentModel].label + ' · letture in corso';
 }
 
@@ -1584,6 +1586,7 @@ function stopPolling() {
   if (pollTimer) clearInterval(pollTimer);
   if (beatTimer) clearInterval(beatTimer);
   pollTimer = null; beatTimer = null;
+  if (isLinked() && !detecting) $('btnPoll').textContent = race ? 'Letture della gara' : 'Letture in pausa';
 }
 
 // connessione persa (caricabatterie spento o fuori portata)
@@ -2447,6 +2450,7 @@ function raceFinish() {
   afterRaceExtras(run);
   updateRaceButton();
   if (pollWasOn && isLinked()) startPolling();
+  else if (isLinked()) $('btnPoll').textContent = 'Letture in pausa';
 }
 
 // --- calcoli ---
@@ -2999,14 +3003,17 @@ function renderLatest() {
   box.innerHTML = CHANNELS.map(ch => {
     const s = latest[ch];
     const col = '--ch:' + COLORS[ch];
-    if (!s || s.stato === 0) {
+    // come l'app ufficiale: l'uscita è vuota solo se è ferma e la tensione è sotto 5 mV;
+    // una pila inserita ma senza programma ha stato 0 (o 1) e la sua tensione
+    if (!s || (s.stato < 2 && !(s.mV >= 5))) {
       return '<div class="card idle" style="' + col + '"><div class="cardhead"><span class="ch">CH' + ch + '</span><span class="state">' +
              (s ? 'vuota' : 'in attesa') + '</span></div><div class="vrow"><div class="v">—</div></div>' +
              (s && s.err ? '<div class="errline">' + errText(s.err) + '</div>' : '') + '</div>';
     }
     const V = s.mV / 1000;
     const lvl = Math.max(4, Math.min(100, Math.round((V - 0.9) / 0.7 * 100)));   // 0,9 V vuota · 1,6 V piena
-    const stato = STATO_LABEL[s.stato] || ('stato ' + s.stato);
+    const idle = s.stato < 2;                      // pila inserita, nessun programma in corso
+    const stato = idle ? (s.stato === 1 ? 'pronta' : 'inserita') : (STATO_LABEL[s.stato] || ('stato ' + s.stato));
     const modo = MODE_LABEL[s.modo] || ('modo ' + s.modo);
     const tc = tempOf(s);
     return '<div class="card on" style="' + col + '">' +
@@ -3016,12 +3023,12 @@ function renderLatest() {
       '<div class="metrics">' +
         '<div><b>' + num(s.mA / 1000, 2) + ' A</b><small>corrente</small></div>' +
         '<div><b>' + s.cap + ' mAh</b><small>capacità</small></div>' +
-        '<div' + (s.ir > rLimit ? ' class="hot"' : '') + '><b>' + s.ir + ' mΩ</b><small>resistenza</small></div>' +
+        '<div' + (s.ir > rLimit ? ' class="hot"' : '') + '><b>' + (s.ir > 0 ? s.ir + ' mΩ' : '—') + '</b><small>resistenza</small></div>' +
         '<div><b>' + (s.dV > 0 ? s.dV + ' mV' : '—') + '</b><small>−ΔV</small></div>' +
         (tc !== null ? '<div><b>' + tc + ' °C</b><small>temperatura</small></div>' : '') +
       '</div>' +
       (s.err ? '<div class="errline">' + errText(s.err) + '</div>' : '') +
-      '<div class="sub">Programma: ' + modo + '</div></div>';
+      '<div class="sub">' + (idle ? 'Nessun programma in corso' : 'Programma: ' + modo) + '</div></div>';
   }).join('');
 }
 
