@@ -1,0 +1,8 @@
+{
+  "appId": "com.banned.nc3000",
+  "appName": "NC3000 Monitor",
+  "webDir": "www",
+  "android": {
+    "allowMixedContent": false
+  }
+}

@@ -213,6 +213,8 @@
   .badge { font-size: 11px; color: var(--ink2); background: var(--field); border-radius: 6px; padding: 3px 7px; white-space: nowrap; }
   .badge.err { color: var(--stop); background: var(--stop-soft); }
   .hright { display: flex; gap: 6px; align-items: center; min-width: 0; }
+  .eqbar { height: 4px; border-radius: 2px; background: var(--rule); margin-top: 6px; overflow: hidden; }
+  .eqbar i { display: block; height: 100%; background: var(--ch); }
   .errline { margin-top: 10px; font-size: 12px; color: var(--stop); background: var(--stop-soft); border-radius: 8px; padding: 6px 8px; }
 
   /* grafici */
@@ -541,6 +543,7 @@
       <div class="chart wide"><h3>Tensione <span>tocca per ingrandire</span></h3><canvas id="chartV"></canvas></div>
       <div class="chart"><h3>Resistenza interna</h3><canvas id="chartT"></canvas></div>
       <div class="chart" id="chartTempBox" style="display:none"><h3>Temperatura</h3><canvas id="chartTemp"></canvas></div>
+      <div class="chart" id="chartEqBox" style="display:none"><h3>Equalizzazione <span>corrente media degli impulsi</span></h3><canvas id="chartEq"></canvas></div>
     </div>
   </section>
 
@@ -849,6 +852,12 @@ let temp10Seen = false;     // il firmware risponde al comando 0xC7 (decimi di g
 let endInfo = {};           // canale -> { reason, drop } motivo dell'ultima fine carica (0xC7 versione 2, firmware v11+)
 let eqState = {};           // canale -> stato dell'equalizzazione (0xC7 versione 3, firmware v12+)
 let eqSeen = false;
+let eqInfo = {};            // canale -> ultimo impulso (0xC7 versione 4, firmware v14+): { t, ph, pulse, iOn, vLoad, removed, n }
+let eqSamples = [];         // [{ t, ch, mA }] corrente media degli impulsi, una per secondo, per il grafico
+let eqPulseSeen = false;
+const EQ_FRESH_S = 3;
+function eqLive(ch, t) { const e = eqInfo[ch]; return e && (t === undefined || t - e.t <= EQ_FRESH_S) ? e : null; }
+function eqAvgMa(e) { return Math.round(e.pulse * e.iOn / 1000); }   // un impulso al secondo
 const EQ_TEXT = { 1: 'in corso', 2: 'in tenuta', 3: 'completata', 4: 'fermata: oltre 45 °C', 5: 'fermata: pila tolta',
   6: 'fermata: 3 ore raggiunte', 7: 'fermata: programma avviato', 8: 'fermata dalla app', 9: 'non avviata: uscita occupata o senza pila', 10: 'fermata: tasto premuto' };
 const END_REASON_TEXT = { 1: '−ΔV', 2: 'calo prolungato dopo il picco', 3: 'tensione ferma per alcuni minuti', 4: 'tensione massima' };
@@ -866,8 +875,12 @@ function fmtTemp(c) { return temp10Seen ? c.toFixed(1).replace('.', ',') : Strin
 
 // risposta 0xC7: 0F 0C C7 0F T1h T1l T2h T2l T3h T3l T4h T4l 01 somma  (Tn = °C × 10, FFFF = non valida)
 // versione 2 (firmware v11+): 0F 14 C7 0F T1..T4 02 R1..R4 D1..D4 somma  (Rn motivo fine carica, Dn calo dal picco in mV)
+// versione 3 (v12+): come la 2 con 03 e in più E1..E4 (stato equalizzazione), 26 byte
+// versione 4 (v14+): 0F 3C C7 0F T1..T4 04 R1..R4 D1..D4 E1..E4 P1..P4 I1..I4 U1..U4 M1..M4 N1..N4 somma (62 byte)
+//   Pn ultimo impulso ms, In corrente dell'impulso mA, Un tensione sotto carico mV, Mn mAh tolti ×10 (2 byte), Nn impulsi fatti
 function handleTemp10Frame(f, t) {
-  const v3 = f.length === 26 && f[1] === 24 && f[12] === 3;
+  const v4 = f.length === 62 && f[1] === 60 && f[12] === 4;
+  const v3 = v4 || (f.length === 26 && f[1] === 24 && f[12] === 3);
   const v2 = v3 || (f.length === 22 && f[1] === 20 && f[12] === 2);
   if (!v2 && (f.length !== 14 || f[1] !== 12) || f[3] !== 0x0F) {
     addLog(t.toFixed(1).padStart(8) + ' s  RX temperatura non riconosciuta ' + hex(f));
@@ -892,9 +905,23 @@ function handleTemp10Frame(f, t) {
       const st = f[20 + ch];
       if ((eqState[ch] || 0) !== st && st) addLog('CH' + ch + ' equalizzazione: ' + (EQ_TEXT[st] || ('stato ' + st)));
       eqState[ch] = st;
+      if (v4) {
+        const be = i => (f[i] << 8) | f[i + 1];
+        const e = { t, ph: st, pulse: be(23 + 2 * ch), iOn: be(31 + 2 * ch), vLoad: be(39 + 2 * ch), removed: be(47 + 2 * ch) / 10, n: f[56 + ch] };
+        const prev = eqInfo[ch];
+        e.missed = prev && t - prev.t < 5 ? Math.max(0, ((e.n - prev.n) & 255) - 1) : 0;   // impulsi fatti fra due letture
+        eqInfo[ch] = e;
+        if (st === 1 || st === 2) {
+          if (!eqPulseSeen) { eqPulseSeen = true; addLog('Il firmware manda gli impulsi dell\'equalizzazione (0xC7 v4)'); }
+          eqSamples.push({ t, ch, mA: eqAvgMa(e) });
+          if (eqSamples.length > 20000) eqSamples = eqSamples.filter((_, i) => i % 2 === 0);
+          if (e.pulse) addLog('CH' + ch + ' impulso ' + e.pulse + ' ms a ' + e.iOn + ' mA, ' + e.vLoad + ' mV sotto carico, tolti ' + e.removed.toFixed(1) + ' mAh');
+        }
+      }
       const el = $('eq_st' + ch);
-      if (el) el.textContent = st ? (EQ_TEXT[st] || ('stato ' + st)) : '';
+      if (el) el.textContent = st ? (EQ_TEXT[st] || ('stato ' + st)) + (eqInfo[ch] && v4 && eqInfo[ch].removed ? ' · tolti ' + eqInfo[ch].removed.toFixed(1).replace('.', ',') + ' mAh' : '') : '';
     }
+    if (v4) renderLatest();
   }
   if (!temp10Seen) { temp10Seen = true; addLog('Il firmware manda la temperatura con un decimale (0xC7)'); }
   tempSeen = true;
@@ -1227,6 +1254,7 @@ function handleFrame(f) {
     err: f[20],                                                  // codice di errore (0 = nessuno)
     hex: hex(f)
   };
+  if (eqState[ch] === 1 || eqState[ch] === 2) { const q = eqLive(ch, t); if (q) s.eq = q; }   // equalizzazione (v14+)
   pushSample(s);
   latest[ch] = s;
   proDataSeen = true;
@@ -1279,7 +1307,7 @@ function onData(ev) {
 // si chiede una volta 0F 03 98 <uscita> <somma> e il caricatore manda la curva di tensione
 // del programma a pacchetti: 0F len 98 [uscita] [pacchetti totali] [pacchetto, da 1]
 // [intervallo, s] [tensioni in mV, 16 bit little-endian]… somma.
-// Il campione i è a i × intervallo secondi dall'inizio del programma.
+// I campioni non sono equidistanti (vedi histTimes): l'intervallo che arriva è solo quello attuale.
 // Si scarica da solo dopo il collegamento e quando si torna sull'app dopo almeno un minuto
 // (in secondo piano il telefono rallenta le letture: lo storico riempie i buchi).
 const HIST_TIMEOUT_MS = 3000;
@@ -1667,6 +1695,15 @@ function drawAll() {
   const box = $('chartTempBox');
   if (box) box.style.display = tempSeen ? '' : 'none';
   if (tempSeen) drawChart('chartTemp', seriesOf('T'), v => v.toFixed(temp10Seen ? 1 : 0).replace('.', ',') + ' °C');
+  // equalizzazione (firmware v14+): corrente media degli impulsi, un punto al secondo
+  const eqBox = $('chartEqBox');
+  if (eqBox) eqBox.style.display = eqSamples.length ? '' : 'none';
+  if (eqSamples.length) {
+    const out = { 1: [], 2: [], 3: [], 4: [], 5: [], 6: [], 7: [], 8: [] };
+    for (const e of eqSamples) if (out[e.ch]) out[e.ch].push([e.t, e.mA / 1000]);
+    for (const ch of CHANNELS) out[ch] = decimate(out[ch], DRAW_POINTS);
+    drawChart('chartEq', out, v => v.toFixed(2).replace('.', ',') + ' A');
+  }
 }
 
 function startPolling() {
@@ -1773,7 +1810,7 @@ async function connect() {
     char = await svc.getCharacteristic(CHR);
     useWnR = !!char.properties.writeWithoutResponse;
     if (!useWnR && !char.properties.write) throw new Error('caratteristica non scrivibile');
-    rxBuf = []; samples = []; latest = {}; histData = {}; lastHistoryDump = null; tempSeen = false; temp10 = {}; temp10Seen = false; endInfo = {}; eqState = {}; eqSeen = false;
+    rxBuf = []; samples = []; latest = {}; histData = {}; lastHistoryDump = null; tempSeen = false; temp10 = {}; temp10Seen = false; endInfo = {}; eqState = {}; eqSeen = false; eqInfo = {}; eqSamples = []; eqPulseSeen = false;
     clearTimeout(autoHistTimer);
     txCount = 0; rxOk = 0; rxBad = 0; logLines = [];
     t0 = Date.now();
@@ -1970,15 +2007,18 @@ function csvRows() {
   const rows = [];
   // storico recuperato dal caricatore (solo tensione): prima del collegamento e nei buchi della diretta
   for (const ch of CHANNELS) for (const [t, mv] of historyPoints(ch)) {
-    rows.push([t, [t.toFixed(3), 'CH' + ch, mv, '', '', '', '', '', '', '', '', 'storico'].join(',')]);
+    rows.push([t, [t.toFixed(3), 'CH' + ch, mv, '', '', '', '', '', '', '', '', 'storico', '', '', '', '', ''].join(',')]);
   }
   for (const s of samples) {
     const tc = tempOf(s);
+    const q = s.eq;
     rows.push([s.t, [s.t.toFixed(3), 'CH' + s.ch, s.mV, s.mA, s.ir, s.cap, s.dV, s.stato, s.modo, s.err, tc === null ? '' : tc,
-                     s.hex.replace(/ /g, '')].join(',')]);
+                     s.hex.replace(/ /g, ''),
+                     q ? q.ph : '', q ? q.pulse : '', q ? q.iOn : '', q ? q.vLoad : '', q ? q.removed.toFixed(1) : ''].join(',')]);
   }
   rows.sort((a, b) => a[0] - b[0]);
-  return ['tempo_s,canale,tensione_mV,corrente_mA,resistenza_mOhm,capacita_mAh,dV_mV,stato,modo,errore,temperatura_C,hex'].concat(rows.map(r => r[1]));
+  return ['tempo_s,canale,tensione_mV,corrente_mA,resistenza_mOhm,capacita_mAh,dV_mV,stato,modo,errore,temperatura_C,hex,' +
+          'eq_stato,eq_impulso_ms,eq_impulso_mA,eq_tensione_carico_mV,eq_tolti_mAh'].concat(rows.map(r => r[1]));
 }
 
 function exportCsv() {
@@ -3167,20 +3207,28 @@ function renderLatest() {
     const stato = idle ? (s.stato === 1 ? 'pronta' : 'inserita') : (STATO_LABEL[s.stato] || ('stato ' + s.stato));
     const modo = MODE_LABEL[s.modo] || ('modo ' + s.modo);
     const tc = tempOf(s);
+    const eq = (eqState[ch] === 1 || eqState[ch] === 2) ? eqLive(ch, s.t) : null;   // impulsi in corso (v14+)
+    const eqDone = eqInfo[ch] && eqInfo[ch].removed && eqState[ch] >= 3 ? eqInfo[ch] : null;
+    const curA = eq ? eqAvgMa(eq) / 1000 : s.mA / 1000;
     return '<div class="card on" style="' + col + '">' +
       '<div class="cardhead"><span class="ch">CH' + ch + '</span><span class="state">' + stato + '</span></div>' +
       '<div class="vrow"><div class="v">' + num(V, 3) + '<small>V</small></div>' +
       '<div class="cell" aria-hidden="true"><i style="height:' + lvl + '%"></i></div></div>' +
       '<div class="metrics">' +
-        '<div><b>' + num(s.mA / 1000, 2) + ' A</b><small>corrente</small></div>' +
-        '<div><b>' + s.cap + ' mAh</b><small>capacità</small></div>' +
+        '<div><b>' + num(curA, 2) + ' A</b><small>' + (eq ? 'media impulsi' : 'corrente') + '</small></div>' +
+        (eq ? '<div><b>' + num(eq.removed, 1) + ' mAh</b><small>tolti</small></div>'
+            : '<div><b>' + s.cap + ' mAh</b><small>capacità</small></div>') +
         '<div' + (s.ir > rLimit ? ' class="hot"' : '') + '><b>' + (s.ir > 0 ? s.ir + ' mΩ' : '—') + '</b><small>resistenza</small></div>' +
         '<div><b>' + (s.dV > 0 ? s.dV + ' mV' : '—') + '</b><small>−ΔV</small></div>' +
         (tc !== null ? '<div><b>' + fmtTemp(tc) + ' °C</b><small>temperatura</small></div>' : '') +
       '</div>' +
       (s.err ? '<div class="errline">' + errText(s.err) + '</div>' : '') +
       (endInfo[ch] && END_REASON_TEXT[endInfo[ch].reason] && s.stato !== 2 ? '<div class="sub">Fine carica: ' + endText(endInfo[ch]) + '</div>' : '') +
-      (eqState[ch] && EQ_TEXT[eqState[ch]] ? '<div class="sub">Equalizzazione: ' + EQ_TEXT[eqState[ch]] + '</div>' : '') +
+      (eqState[ch] && EQ_TEXT[eqState[ch]] ? '<div class="sub">Equalizzazione: ' + EQ_TEXT[eqState[ch]] +
+        (eq && eq.pulse ? '<br>Impulso ' + eq.pulse + ' ms a ' + num(eq.iOn / 1000, 2) + ' A · ' + num(eq.vLoad / 1000, 3) + ' V sotto carico' +
+           '<div class="eqbar" title="durata dell\'impulso (massimo 400 ms)"><i style="width:' + Math.min(100, eq.pulse / 4) + '%"></i></div>'
+         : eq ? '<br>Nessun impulso: pila già all\'obiettivo' : '') +
+        (eqDone ? ' · tolti ' + num(eqDone.removed, 1) + ' mAh' : '') + '</div>' : '') +
       '<div class="sub">' + (idle ? 'Nessun programma in corso' : 'Programma: ' + modo) + '</div></div>';
   }).join('');
 }

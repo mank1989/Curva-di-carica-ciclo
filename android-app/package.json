@@ -1,0 +1,15 @@
+{
+  "name": "nc3000-monitor-android",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Guscio Android della web app NC3000 Monitor (Bluetooth nativo, servizio in primo piano, aggiornamento automatico)",
+  "dependencies": {
+    "@capacitor-community/bluetooth-le": "^7.1.1",
+    "@capacitor/android": "^7.0.0",
+    "@capacitor/cli": "^7.0.0",
+    "@capacitor/core": "^7.0.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  }
+}
