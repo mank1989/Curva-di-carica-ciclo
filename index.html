@@ -588,9 +588,9 @@
     </div>
 
     <h2 class="sec">Uscite</h2>
-    <div class="allbar"><div><b>Tutte le uscite</b><small>⏸ pausa · ▶ riprendi · ■ ferma</small></div><div class="vcr" data-vcr="all"></div></div>
+    <div class="allbar"><div><b>Tutte le uscite</b><small>pausa, riprendi, ferma</small></div><div class="vcr" data-vcr="all"></div></div>
     <div id="latest" class="cards"></div>
-    <p class="hint">La pausa ferma l'uscita e ricorda il programma; ▶ lo fa ripartire. Carica e scarica proseguono fino alla fine, un Ciclo riparte dall'inizio. Si mettono in pausa solo i programmi avviati dall'app.</p>
+    <p class="hint">La pausa ferma l'uscita e ricorda il programma; il tasto riprendi lo fa ripartire. Carica e scarica proseguono fino alla fine, un Ciclo riparte dall'inizio. Si mettono in pausa solo i programmi avviati dall'app.</p>
 
     <h2 class="sec">Andamento <small>lo storico del caricatore si scarica da solo</small></h2>
     <div class="charts">
@@ -603,8 +603,6 @@
 
   <!-- PROGRAMMA -->
   <section id="tab-program" class="tab">
-    <div class="chstrip" id="progStrip"></div>
-    <div class="allbar"><div><b>Tutte le uscite</b><small>⏸ pausa · ▶ riprendi · ■ ferma</small></div><div class="vcr" data-vcr="all"></div></div>
     <details class="adv" id="presetBox">
       <summary>Profili salvati</summary>
       <div class="group">
@@ -5611,7 +5609,7 @@ function pauseLine(ch) {
   const p = paused[ch];
   if (!p) return '';
   const m = Math.max(0, Math.round((Date.now() - p.ts) / 60000));
-  return '<div class="sub">In pausa da ' + (m < 1 ? 'meno di un minuto' : m + ' min') + ' · ' + p.cap + ' mAh fatti prima della pausa. ▶ per riprendere</div>';
+  return '<div class="sub">In pausa da ' + (m < 1 ? 'meno di un minuto' : m + ' min') + ' · ' + p.cap + ' mAh fatti prima della pausa. Tocca riprendi per continuare</div>';
 }
 function vcrButtons(ch) {
   return ['pause', 'play', 'stop'].map(a => '<button type="button" data-ctl="' + a + '" data-ch="' + ch + '" disabled aria-label="' +
@@ -5730,17 +5728,18 @@ function irRender() {
   const chans = irRun ? irRun.chans : Object.keys(irLive).map(Number).sort();
   if (!chans.length) { out.innerHTML = ''; return; }
   const mA = motorAmps();
-  let h = '<div class="group" style="margin:10px 0 0"><table class="tbl"><tr><th>Uscita</th><th>Pila</th><th>R mΩ</th><th>Corrente</th><th>Riposo</th><th>Sotto carico</th>' +
-          (mA ? '<th>V a ' + fmt(mA, 1) + ' A</th>' : '') + '<th>Stato</th></tr>';
+  let h = '<div class="group" style="margin:10px 0 0"><table class="tbl"><tr><th>Uscita</th><th>Pila</th><th>R mΩ</th><th>Stato</th><th>Corrente</th><th>Riposo</th><th>Sotto carico</th>' +
+          (mA ? '<th>V a ' + fmt(mA, 1) + ' A</th>' : '') + '</tr>';
   for (const ch of chans) {
     const x = irLive[ch] || {};
     const name = (irRun && irRun.names[ch]) || ($('r_name' + ch) ? $('r_name' + ch).value.trim() : '');
     const ok = x.n > 0;
     const vm = ok && mA ? x.v0 / 1000 - mA * x.r / 1000 : null;
-    h += '<tr><td>CH' + ch + '</td><td>' + esc(name || '—') + '</td><td><b>' + (ok ? fmt(x.r, 1) : '—') + '</b></td><td>' + (ok ? fmt(x.i / 1000, 2) + ' A' : '—') +
+    const stato = (IR_PHASE[x.phase] || '—') + (x.phase === 1 || x.phase === 2 || (x.phase > 3 && x.n) ? ' (' + (x.n || 0) + '/3)' : '');
+    h += '<tr><td>CH' + ch + '</td><td>' + esc(name || '—') + '</td><td><b>' + (ok ? fmt(x.r, 1) : '—') + '</b></td>' +
+         '<td' + (x.phase > 3 ? ' class="warnc"' : '') + '>' + stato + '</td><td>' + (ok ? fmt(x.i / 1000, 2) + ' A' : '—') +
          '</td><td>' + (x.v0 ? fmt(x.v0 / 1000, 3) + ' V' : '—') + '</td><td>' + (x.v1 ? fmt(x.v1 / 1000, 3) + ' V' : '—') + '</td>' +
-         (mA ? '<td>' + (vm !== null ? fmt(vm, 3) + ' V' : '—') + '</td>' : '') +
-         '<td>' + (IR_PHASE[x.phase] || '—') + (x.phase === 1 || x.phase === 2 ? ' (' + (x.n || 0) + '/3)' : '') + '</td></tr>';
+         (mA ? '<td>' + (vm !== null ? fmt(vm, 3) + ' V' : '—') + '</td>' : '') + '</tr>';
   }
   h += '</table></div>';
   // coppie più vicine per resistenza (tra le pile appena misurate)
@@ -5786,6 +5785,8 @@ function irFinish() {
   }
   writeJSON(IR_KEY, store);
   if (saved.length) { addLog('Resistenza a impulso: ' + saved.join(' · ')); speak('Misura della resistenza finita'); }
+  const unnamed = run.chans.filter(ch => !run.names[ch] && irLive[ch] && irLive[ch].n);
+  if (unnamed.length) toast('CH' + unnamed.join(', CH') + ' senza nome della pila: misura non salvata');
   $('x_irStart').disabled = false;
   irRender(); renderCellBoard();
 }
