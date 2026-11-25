@@ -168,7 +168,12 @@ export function createBluetooth(Ble, hooks = {}) {
   return {
     async getAvailability() { return true; },
     async requestDevice(options = {}) {
-      try { await init(); } catch (e) { showMsg('Bluetooth: ' + ((e && e.message) || JSON.stringify(e)) + '\n\nDiagnostica: ' + JSON.stringify(window.__nc3000Diag || {})); throw e; }
+      try { await init(); } catch (e) {
+        let d = {};
+        try { if (hooks.diag) d = await hooks.diag(); } catch (e2) { /* ignora */ }
+        showMsg('Bluetooth: ' + ((e && e.message) || JSON.stringify(e)) + '\n\nDiagnostica: ' + JSON.stringify(d));
+        throw e;
+      }
       const req = { optionalServices: (options.optionalServices || []).map(norm) };
       const f = options.filters && options.filters[0];
       if (f) {
