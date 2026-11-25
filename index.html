@@ -184,22 +184,12 @@
             border-radius: var(--radius); padding: 8px 10px 8px 14px; margin: 0 0 10px; box-shadow: var(--shadow); }
   .allbar b { font: 700 15px var(--display); } .allbar small { display: block; font-size: 12px; color: var(--ink3); }
   .allbar .vcr { margin: 0; width: 168px; flex: none; }
-  .chstrip { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 0 0 10px; }
-  .chstrip .it { display: flex; align-items: center; gap: 8px; background: var(--panel); border: 1px solid var(--rule); border-radius: var(--radius); padding: 6px 6px 6px 12px; }
-  .chstrip .lb { flex: 1; min-width: 0; font: 700 14px/1.15 var(--display); color: var(--ch); }
-  .chstrip .lb small { display: block; font: 500 11.5px var(--body); color: var(--ink3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .chstrip .vcr { margin: 0; grid-template-columns: repeat(3, 32px); gap: 4px; }
-  .chstrip .vcr button { height: 32px; }
   .feats .row label small { display: block; }
   .profsel { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 0 0 10px; }
   .profsel button { padding: 10px 6px; border-radius: calc(var(--radius) - 4px); border: 1px solid var(--rule2); background: var(--field); color: var(--ink); font: 700 14px var(--display); }
   .profsel button[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); }
   .bxin { padding: 4px 16px 14px; } .bxin .btns { margin: 8px 0 0; } .bxin .hint { margin: 8px 0 0; }
   .btns .btn { width: 100%; }
-  .tools { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
-  .tool { font: 600 14px/1 var(--body); color: var(--ink); background: var(--field); border: 1px solid var(--rule2);
-          border-radius: 999px; padding: 9px 14px; cursor: pointer; }
-  .tool:disabled { color: var(--ink3); background: transparent; border-color: var(--rule); cursor: not-allowed; }
   body.linked #btnConnect, body:not(.linked) #btnDisc { display: none; }
 
   .checkrow { display: flex; align-items: center; gap: 10px; padding: 12px 16px; font-size: 15px; color: var(--ink); cursor: pointer; }
@@ -216,12 +206,6 @@
   .device-head { min-width: 0; }
   .device-name { font: 700 22px/1.1 var(--display); letter-spacing: .01em; overflow-wrap: anywhere; }
   .device-sub { font-size: 13px; color: var(--ink3); margin-top: 4px; }
-  /* firmware del Pro: riga a sé dentro il pannello, così non esce anche con il testo del telefono ingrandito */
-  .fw { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto auto; align-items: center; gap: 2px 12px;
-        margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--rule); }
-  .fw > label { grid-column: 1; grid-row: 1; font-size: 15px; color: var(--ink); align-self: end; }
-  .fw small { grid-column: 1; grid-row: 2; font-size: 12.5px; color: var(--ink3); align-self: start; line-height: 1.35; }
-  .fw select { grid-column: 2; grid-row: 1 / 3; font-size: 14px; padding: 9px 30px 9px 11px; max-width: 46vw; }
   .device .btns { margin: 16px 0 0; }
   /* riquadro del caricabatterie: nome, stato delle letture, firmware, azioni nel menu ⋯ */
   .device { position: relative; }
@@ -236,7 +220,7 @@
   .livechip.on i { background: #1f9d55; box-shadow: 0 0 0 3px rgba(31,157,85,.2); }
   .livechip.paused { cursor: pointer; } .livechip.paused i { background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
   .fwsel { display: inline-flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--ink3); }
-  .fwsel select { font-size: 14px; padding: 8px 30px 8px 11px; }
+  .fwsel #fwTxt { white-space: nowrap; }
   .dev-menu { position: absolute; right: 12px; top: 58px; z-index: 30; min-width: 210px; background: var(--panel); border: 1px solid var(--rule2);
               border-radius: 14px; box-shadow: var(--lift); padding: 6px; display: grid; }
   .dev-menu .mi { text-align: left; padding: 12px 12px; border: 0; background: transparent; color: var(--ink); font: 600 15px var(--body); border-radius: 9px; cursor: pointer; }
@@ -477,7 +461,6 @@
   #notice .noticebox { background: var(--panel); border: 1px solid var(--rule); border-radius: calc(var(--radius) + 4px); padding: 22px; max-width: 420px; }
   #notice h3 { margin: 0 0 6px; font: 700 21px/1.15 var(--display); letter-spacing: .01em; }
   #notice p { color: var(--ink2); font-size: 15px; line-height: 1.5; margin: 0 0 18px; }
-  .kpis { display: none; }
   footer { margin-top: 28px; font-size: 12px; color: var(--ink3); text-align: center; }
 
   /* «box»: la riga a scacchi del logo sotto l'intestazione, finitura metallica dei pulsanti */
@@ -602,27 +585,21 @@
         <button type="button" id="devMore" class="dev-more" aria-label="Altre azioni" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg></button>
       </div>
       <div class="dev-menu" id="devMenu" hidden>
-        <button type="button" id="btnPoll" class="mi" disabled>Avvia letture</button>
+        <button type="button" id="btnPoll" class="mi" disabled hidden>Avvia letture</button>
         <button type="button" id="btnHist" class="mi" disabled>Aggiorna storico</button>
-        <button type="button" id="btnHistSave" class="mi" disabled>Salva storico</button>
         <button type="button" id="btnExport" class="mi" disabled>Esporta CSV</button>
         <hr>
         <button type="button" id="btnDisc" class="mi stop" disabled>Disconnetti</button>
       </div>
       <div class="dev-row">
         <span class="livechip" id="liveChip"><i></i><span id="liveTxt">Non collegato</span></span>
-        <span class="fwsel" id="fwRow"><label for="fwSel">Firmware</label><select id="fwSel"><option value="orig">Originale</option><option value="mod">Modificato</option></select><button type="button" class="ibtn" data-info-src="fwHint" aria-label="Informazioni sul firmware">i</button></span>
+        <span class="fwsel" id="fwRow"><span id="fwTxt">Firmware originale</span><button type="button" class="ibtn" data-info-src="fwHint" aria-label="Informazioni sul firmware">i</button></span>
         <small id="fwHint" hidden>scarica max 2,50 A · cicli max 3</small>
       </div>
       <div id="modelPick" class="btns two" style="display:none"><button id="btnPickPro" class="btn ghost">È un Pro (4 uscite)</button><button id="btnPickOcta" class="btn ghost">È un Octa (8 uscite)</button></div>
       <div class="btns"><button id="btnConnect" class="btn">Connetti</button></div>
     </div>
 
-    <div class="kpis">
-      <div class="kpi"><small>Inviati</small><b id="tx">0</b></div>
-      <div class="kpi"><small>Valide</small><b id="rxok">0</b></div>
-      <div class="kpi"><small>Scartate</small><b id="rxbad">0</b></div>
-    </div>
 
     <h2 class="sec">Uscite</h2>
     <div class="allbar"><div><b>Tutte le uscite</b><small>pausa, riprendi, ferma</small></div><div class="vcr" data-vcr="all"></div></div>
@@ -668,14 +645,14 @@
 
     <div class="group">
       <h3>Parametri</h3>
-      <div class="row" data-modes="0 3"><label>Capacità</label><div class="val"><input type="number" id="p_capacity" value="950" inputmode="numeric"><span class="unit">mAh</span></div></div>
+      <div class="row" data-modes="0 3"><label>Capacità<small class="hint">limite: tienila sopra la pila</small></label><div class="val"><input type="number" id="p_capacity" value="1200" inputmode="numeric"><span class="unit">mAh</span></div></div>
       <div class="row" data-modes="0 3"><label>Carica a<small class="hint" id="p_chargeMax">max 3,00 A</small></label><div class="val"><input type="number" id="p_chargeE" value="0.50" step="0.05" max="3.00" inputmode="decimal"><span class="unit">A</span></div></div>
       <div class="row" data-modes="1 3"><label>Scarica a<small class="hint" id="p_dischargeMax">max 2,80 A</small></label><div class="val"><input type="number" id="p_dischargeE" value="2.50" step="0.05" inputmode="decimal"><span class="unit">A</span></div></div>
       <div class="row" data-modes=""><label>Corrente di spegnimento<small class="hint">0 = spento</small></label><div class="val"><input type="number" id="p_inStopCurrent" value="0" step="0.01" inputmode="decimal"><span class="unit">A</span></div></div>
       <div class="row" data-modes="0 3"><label>Target Voltage</label><div class="val"><input type="number" id="p_inStopVoltage" value="1.70" step="0.01" inputmode="decimal"><span class="unit">V</span></div></div>
       <div class="row" data-modes="1"><label>Corrente di spegnimento<small class="hint">0 = spento</small></label><div class="val"><input type="number" id="p_outStopCurrent" value="0" step="0.01" inputmode="decimal"><span class="unit">A</span></div></div>
       <div class="row" data-modes="1 3"><label>Tensione di spegnimento</label><div class="val"><input type="number" id="p_outStopVoltage" value="0.99" step="0.01" inputmode="decimal"><span class="unit">V</span></div></div>
-      <div class="row" data-modes="0 1 3"><label>Timer di spegnimento<small class="hint">0 = spento</small></label><div class="val"><input type="number" id="p_inTimeProtect" value="180" inputmode="numeric"><span class="unit">min</span></div></div>
+      <div class="row" data-modes="0 1 3"><label>Timer di spegnimento<small class="hint">0 = spento</small></label><div class="val"><input type="number" id="p_inTimeProtect" value="240" inputmode="numeric"><span class="unit">min</span></div></div>
       <div class="row" data-modes="3"><label>Tempo di pausa di ricarica</label><div class="val"><input type="number" id="p_chargeRestTime" value="5" inputmode="numeric"><span class="unit">min</span></div></div>
       <div class="row" data-modes="3"><label>Scarico a riposo</label><div class="val"><input type="number" id="p_dischargeRestTime" value="10" inputmode="numeric"><span class="unit">min</span></div></div>
       <div class="row" data-modes="0 3"><label>Delta Peak −ΔV</label><div class="val"><input type="number" id="p_detalV" value="6" inputmode="numeric"><span class="unit">mV</span></div></div>
@@ -711,11 +688,6 @@
       <div class="btns"><button id="btnStart" class="btn" disabled>Avvia su uscita 1</button></div>
       <div class="btns"><button id="btnStartAll" class="btn ghost" disabled>Avvia su tutte</button></div>
       <p id="startHint" class="hint">Connetti prima il caricabatterie.</p>
-      <div hidden>
-        <button id="btnStopCh" class="btn danger" disabled>Ferma uscita 1</button>
-        <button id="btnStopAll" class="btn danger" disabled>Ferma tutte</button>
-        <p id="stopHint" class="hint">Lo stop parte subito, senza controlli.</p>
-      </div>
     </div>
 
     <details class="adv" id="eqBox" data-feat="eq">
@@ -805,7 +777,7 @@
     <h2 class="sec">Storico delle gare</h2>
     <div id="raceHistory"></div>
 
-    <h2 class="sec" data-info="Il punteggio confronta le pile tra loro (servono almeno due pile). Ripetibilità = quanto varia una pila da una gara all'altra: più è bassa, più è regolare (servono almeno due gare). Salute = come sta la pila rispetto ai suoi valori migliori di capacità e resistenza; sotto 85% conviene passarla alle prove. V a X A = tensione stimata sotto il tuo motore, dalla caduta misurata nelle gare simulate.">Classifica pile</h2>
+    <h2 class="sec" data-info="Il punteggio confronta le pile tra loro (servono almeno due pile): conta la tensione media sotto carico, la resistenza, la caduta iniziale e la ripetibilità. Una pila vicina alla migliore perde pochi punti. I mAh erogati e l'energia non contano: in una gara a corrente fissa dipendono dall'uscita usata più che dalla pila. Ripetibilità = quanto cambia la tensione media da una gara all'altra, in mV: più è bassa, più è regolare (servono almeno due gare). Salute = come sta la pila rispetto ai suoi valori migliori di capacità e resistenza; sotto 85% conviene passarla alle prove. V a X A = tensione stimata sotto il tuo motore, dalla caduta misurata nelle gare simulate.">Classifica pile</h2>
     <div class="group" data-feat="stats">
       <div class="row"><label>Corrente del tuo motore<small class="hint">per stimare la tensione in pista</small></label><div class="val"><input type="number" id="x_motorA" value="3.0" step="0.1" min="0" max="10" inputmode="decimal"><span class="unit">A</span></div></div>
     </div>
@@ -903,8 +875,7 @@
       <summary>Registro dell'aggiornamento</summary>
       <div class="inner">
         <pre id="fwLog" class="fwlog"></pre>
-        <div class="btns two"><button type="button" id="fwCopy" class="btn ghost">Copia registro</button><button type="button" id="fwSim" class="btn ghost">Prova simulata</button></div>
-        <p class="hint">La prova simulata usa un caricatore finto: non manda niente via Bluetooth.</p>
+        <div class="btns"><button type="button" id="fwCopy" class="btn ghost">Copia registro</button></div>
       </div>
     </details>
     <p class="hint fw-foot">Se il caricatore resta bloccato, rimetti il firmware originale con l'app SkyRC. La <a id="fwStandalone" href="#" target="_blank" rel="noopener">pagina di aggiornamento separata</a> resta disponibile.</p>
@@ -1033,7 +1004,7 @@ let logLines = [];
 let fwRoute = null, lastInfoAt = 0;
 const fw = { open: false, dev: 'off', session: 'idle', busy: false, armed: false, preparedOnce: false, pendingSince: 0,
              flasher: null, transport: null, dlen: 0, model: '', wasPolling: false, file: null, check: null, fileName: '',
-             official: false, log: [], msg: '', msgKind: '', phase: '', done: 0, total: 0, simRunning: false, timeScale: 1 };
+             official: false, log: [], msg: '', msgKind: '', phase: '', done: 0, total: 0, timeScale: 1 };
 let currentMode = 3;   // 0 Carica, 1 Scarica, 3 Ciclo (valori dell'app)
 let currentModel = 'pro';   // 'pro' (4 canali) o 'octa' (8 canali), lo imposta applyModel()
 const MODE_NAME = { 0: 'Carica', 1: 'Scarica', 3: 'Ciclo' };
@@ -1042,6 +1013,8 @@ const MODE_NAME = { 0: 'Carica', 1: 'Scarica', 3: 'Ciclo' };
 // Si sceglie a mano e resta salvato su questo telefono: via Bluetooth i due firmware rispondono uguale.
 const FW_KEY = 'nc3000_fw_v1';
 let proFirmware = (() => { try { return localStorage.getItem(FW_KEY) === 'mod' ? 'mod' : 'orig'; } catch (e) { return 'orig'; } })();
+let c7Asked = 0;            // richieste 0xC7 dal collegamento: senza risposta il firmware è l'originale
+let fwKnown = false;        // firmware del Pro già riconosciuto in questo collegamento
 let tempSeen = false;       // il caricatore manda la temperatura dei canali (byte 8 del pacchetto 0x91)
 let temp10 = {};            // canale -> { c: °C con un decimale, t: secondi } dall'ultima risposta 0xC7
 let temp10Seen = false;     // il firmware risponde al comando 0xC7 (decimi di grado)
@@ -1082,6 +1055,7 @@ function handleTemp10Frame(f, t) {
     addLog(t.toFixed(1).padStart(8) + ' s  RX temperatura non riconosciuta ' + hex(f));
     return;
   }
+  fwDetect(true);
   const parts = [];
   for (let ch = 1; ch <= 4; ch++) {
     const v = (f[2 + 2 * ch] << 8) | f[3 + 2 * ch];
@@ -1144,7 +1118,16 @@ function updateDischargeHints() {
   const cc = $('p_cycleCount'); if (cc) cc.max = String(maxCycles());
   const fh = $('fwHint'); if (fh) fh.textContent = 'scarica max ' + ampTxt(maxDischargeMa()) + ' · cicli max ' + maxCycles();
   const fr = $('fwRow'); if (fr) fr.style.display = currentModel === 'octa' ? 'none' : '';
-  const fs = $('fwSel'); if (fs) fs.value = proFirmware;
+  const ft = $('fwTxt'); if (ft) ft.textContent = proFirmware === 'mod' ? 'Firmware BANNED' : 'Firmware originale';
+}
+// Il firmware BANNED (v10+) risponde al comando 0xC7, l'originale SkyRC no: niente più scelta a mano
+function fwDetect(mod) {
+  if (currentModel === 'octa') return;
+  if (fwKnown && (!mod || proFirmware === 'mod')) return;   // una risposta 0xC7 arrivata tardi corregge sempre
+  fwKnown = true;
+  const v = mod ? 'mod' : 'orig';
+  addLog('Firmware riconosciuto: ' + (mod ? 'BANNED (risponde a 0xC7)' : 'originale SkyRC (nessuna risposta a 0xC7)'));
+  if (proFirmware !== v) setFirmware(v);
 }
 function setFirmware(v) {
   proFirmware = v === 'mod' ? 'mod' : 'orig';
@@ -1400,7 +1383,6 @@ function enqueue(cmd, payload, label, cb) {
     if (useWnR) await char.writeValueWithoutResponse(f);
     else await char.writeValue(f);
     txCount++;
-    $('tx').textContent = txCount;
     addLog('TX ' + label + '  ' + hex(f));
     if (typeof cb === 'function') cb(Date.now());
     await sleep(WRITE_GAP_MS);
@@ -1425,8 +1407,6 @@ function handleFrame(f) {
   const t = (Date.now() - t0) / 1000;
   const ok = checksumOk(f);
   if (ok) rxOk++; else rxBad++;
-  $('rxok').textContent = rxOk;
-  $('rxbad').textContent = rxBad;
 
   if (!ok) {
     addLog(t.toFixed(1).padStart(8) + ' s  RX non valida ' + hex(f));
@@ -1521,7 +1501,6 @@ const HIST_TIMEOUT_MS = 3000;
 const HIST_AUTO_HIDDEN_MS = 60000;
 let histJob = null;          // scaricamento in corso (un'uscita alla volta)
 let histData = {};           // uscita -> { interval, mv, times, tStart }  (times: s dall'inizio del programma; tStart sull'asse del grafico, s)
-let lastHistoryDump = null;  // ultimo scaricamento, per «Salva storico»
 let histBusy = false;
 let autoHistTimer = null;
 
@@ -1708,20 +1687,6 @@ async function downloadHistory(opts) {
       break;
     }
   }
-  lastHistoryDump = {
-    app: 'NC3000', tipo: 'storico 0x98', modello: currentModel, automatico: auto, creato: new Date().toISOString(),
-    canali: results.map(r => {
-      const L = latest[r.pos];
-      return {
-        uscita: r.pos, esito: r.status, intervallo_s: r.interval, pacchetti: r.page + '/' + r.total,
-        campioni: r.mv.length, durata_s: histEnd(r), tempi_s: histTimes(r.mv.length, r.interval || 1),
-        // ultima lettura in diretta: serve a verificare l'aggancio dello storico al tempo del programma
-        diretta: L ? { tempo_programma_s: L.counter, stato: L.stato, modo: L.modo, errore: L.err, tensione_mV: L.mV } : null,
-        tensioni_mV: r.mv, pacchetti_hex: r.frames
-      };
-    })
-  };
-  $('btnHistSave').disabled = false;
   setHistBusy(false);
   if (wasPolling && isLinked()) startPolling();
   const got = results.filter(r => r.mv.length);
@@ -1748,12 +1713,6 @@ function scheduleAutoHistory(delayMs) {
     downloadHistory({ auto: true });
   };
   autoHistTimer = setTimeout(tick, delayMs || 0);
-}
-
-function saveHistory() {
-  if (!lastHistoryDump) return;
-  downloadFile('nc3000_storico_' + new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-') + '.json',
-               JSON.stringify(lastHistoryDump, null, 1), 'application/json');
 }
 
 // unisce due elenchi [tempo, valore] già in ordine di tempo
@@ -1928,7 +1887,10 @@ function startPolling() {
     try { enqueue(CMD_NC_DATA, [[1, 2, 4, 8][maskIdx]], '0x91'); } catch (e) { addLog(e.message); }
     maskIdx = (maskIdx + 1) % 4;
     // temperatura in decimi (firmware BANNED v10+): una volta al secondo; l'originale la ignora
-    if (maskIdx === 0) { try { enqueue(CMD_TEMP10, [0x00], '0xC7'); } catch (e) { addLog(e.message); } }
+    if (maskIdx === 0) {
+      try { enqueue(CMD_TEMP10, [0x00], '0xC7'); } catch (e) { addLog(e.message); }
+      if (++c7Asked >= 8 && !temp10Seen && proDataSeen) fwDetect(false);
+    }
   }, 250);
   beatTimer = setInterval(() => {
     try { enqueue(CMD_HEARTBEAT, [0x00], '0xEE'); } catch (e) { addLog(e.message); }
@@ -1988,9 +1950,6 @@ function setConnected(on) {
   $('btnDisc').disabled = !on;
   $('btnExport').disabled = !on;
   $('btnHist').disabled = !on || histBusy;
-  $('btnHistSave').disabled = !lastHistoryDump;
-  $('btnStopCh').disabled = !on;
-  $('btnStopAll').disabled = !on;
   updateStartButton();
 }
 
@@ -2035,11 +1994,10 @@ async function linkDevice(d, again) {
     rxBuf = [];
     clearTimeout(autoHistTimer);
     if (!again) {
-      samples = []; latest = {}; histData = {}; lastHistoryDump = null; tempSeen = false; temp10 = {}; temp10Seen = false; endInfo = {}; eqState = {}; eqSeen = false; eqInfo = {}; eqSamples = []; eqPulseSeen = false;
+      samples = []; latest = {}; histData = {}; c7Asked = 0; fwKnown = false; tempSeen = false; temp10 = {}; temp10Seen = false; endInfo = {}; eqState = {}; eqSeen = false; eqInfo = {}; eqSamples = []; eqPulseSeen = false;
       for (const k in prevStato) delete prevStato[k];
       txCount = 0; rxOk = 0; rxBad = 0; logLines = [];
       t0 = Date.now();
-      $('tx').textContent = 0; $('rxok').textContent = 0; $('rxbad').textContent = 0;
     }
     renderLatest(); drawAll();
     char.removeEventListener('characteristicvaluechanged', onData);
@@ -2135,7 +2093,17 @@ function nativeCall(fn, ...args) {
 }
 // fine programma di un'uscita: lo stato passa da carica/scarica/riposo a completato
 const prevStato = {};
+// carica fermata dal limite di Capacità e non da −ΔV: la pila può non essere piena.
+// ls = ultimo programma avviato dall'app su quell'uscita (byte 1 modalità, byte 6–7 capacità in mAh)
+function capStopOf(s, ls) {
+  const b = ls && ls.blob;
+  if (!b || b[1] !== 0) return null;
+  const cap = ((b[6] << 8) | b[7]) >>> 0;
+  if (!(cap > 0) || !isNum(s.cap) || s.cap < cap - 5) return null;
+  return cap;
+}
 function checkCycleEnd(s) {
+  const lsEnd = lastStart[s.ch];        // prima di trackStart, che a fine programma lo cancella
   trackStart(s);
   const p = prevStato[s.ch];
   prevStato[s.ch] = s.stato;
@@ -2149,13 +2117,20 @@ function checkCycleEnd(s) {
   const modo = (MODE_LABEL[s.modo] || 'programma').toLowerCase();
   const rep = repeatOnEnd(s);            // null, oppure { done, total }
   const repTxt = rep ? (rep.done < rep.total ? ' · ripetizione ' + rep.done + ' di ' + rep.total : ' · ripetizioni finite (' + rep.total + ')') : '';
-  const txt = 'Fine ' + modo + ' · ' + s.cap + ' mAh · ' + (s.mV / 1000).toFixed(3).replace('.', ',') + ' V' + repTxt;
+  const capStop = capStopOf(s, lsEnd);
+  const txt = 'Fine ' + modo + ' · ' + s.cap + ' mAh · ' + (s.mV / 1000).toFixed(3).replace('.', ',') + ' V' +
+              (capStop ? ' · fermata dal limite di Capacità' : '') + repTxt;
   addLog('CH' + s.ch + ': ' + txt);
   markActivity(s.ch);
+  if (capStop) {
+    infoBanner('x_cap' + s.ch, '<b>CH' + s.ch + ': la carica si è fermata al limite di Capacità (' + capStop + ' mAh), non per −ΔV.</b> ' +
+      'La pila potrebbe non essere piena. In Carica la Capacità è un tetto: mettila circa un quarto sopra la capacità della pila (per una 950 mAh, 1200).',
+      [['Vai al Programma', () => { const t = document.querySelector('[data-tab="tab-program"]'); if (t) t.click(); const c = $('p_capacity'); if (c) c.focus(); }, true], ['Chiudi', null]]);
+  }
   if (boxOnEnd(s)) return;               // rabbocco dei box: avvisa la coppia intera quando finiscono tutte e due
   playNotify('end');
   nativeCall('alert', 'NC3000 · CH' + s.ch, txt, 100 + s.ch, true);
-  speak('Uscita ' + s.ch + ', fine ' + modo + ', ' + s.cap + ' milliampere ora' +
+  speak('Uscita ' + s.ch + ', fine ' + modo + ', ' + s.cap + ' milliampere ora' + (capStop ? ', fermata dal limite di capacità' : '') +
         (rep ? (rep.done < rep.total ? (rep.pause > 0 ? '. Riparte tra ' + rep.pause + (rep.pause === 1 ? ' minuto' : ' minuti') : '. Riparte subito') : '. Ripetizioni finite') : ''));
 }
 // testo della notifica fissa dell'app: stato delle uscite ogni 5 s
@@ -2245,12 +2220,6 @@ function checkProgram(p) {
   return true;
 }
 
-function stopReasons() {  // lo stop è immediato: basta essere connessi
-  const why = [];
-  if (!isLinked()) why.push('Connetti prima il caricabatterie');
-  return why;
-}
-
 function eqMask() {
   let m = 0;
   for (let ch = 1; ch <= 4; ch++) if ($('eq_ch' + ch).checked) m |= 1 << (ch - 1);
@@ -2286,15 +2255,11 @@ function eqStop() {
 
 function updateStartButton() {
   const sr = startBlockers();
-  const tr = stopReasons();
   const pos = Number($('p_position').value) || 1;
   $('btnStart').disabled = sr.length > 0;
   $('btnStartAll').disabled = sr.length > 0;
   $('btnStart').textContent = 'Avvia su uscita ' + pos;
   $('btnStartAll').textContent = 'Avvia su tutte';
-  $('btnStopCh').disabled = tr.length > 0;
-  $('btnStopAll').disabled = tr.length > 0;
-  $('btnStopCh').textContent = 'Ferma uscita ' + pos;
   if (sr.length) $('startHint').textContent = sr[0].charAt(0).toUpperCase() + sr[0].slice(1) + '.';
   else if (/^Connetti|^Attendi/.test($('startHint').textContent)) $('startHint').textContent = '';
   updateRaceButton();
@@ -2433,16 +2398,12 @@ $('btnPoll').onclick = startPolling;
 $('btnDisc').onclick = disconnect;
 $('btnExport').onclick = exportCsv;
 $('btnHist').onclick = () => downloadHistory();
-$('fwSel').onchange = () => setFirmware($('fwSel').value);
 $('chartV').onclick = () => { $('chartV').classList.toggle('big'); drawAll(); };
 if (window.addEventListener) window.addEventListener('resize', () => drawAll());
-$('btnHistSave').onclick = saveHistory;
 $('btnStart').onclick = startProgram;
 $('btnEqStart').onclick = eqStart;
 $('btnEqStop').onclick = eqStop;
 $('btnStartAll').onclick = startAll;
-$('btnStopCh').onclick = () => stopChannel(Number($('p_position').value));
-$('btnStopAll').onclick = stopAll;
 document.querySelectorAll('[id^="p_"]').forEach(el => {
   const changed = () => {
     updateStartButton();
@@ -2485,8 +2446,30 @@ let raceStopTimers = [];
 let racePollIdx = 0;
 let pollWasOn = false;
 
-function loadRaces() { try { races = JSON.parse(localStorage.getItem(RACE_KEY) || '[]'); } catch (e) { races = []; } }
-function saveRaces() { try { localStorage.setItem(RACE_KEY, JSON.stringify(races)); } catch (e) { /* ignora */ } }
+function loadRaces() {
+  let raw = '';
+  try { raw = localStorage.getItem(RACE_KEY) || '[]'; races = JSON.parse(raw); } catch (e) { races = []; }
+  if (!Array.isArray(races)) races = [];
+  // gare salvate dalle versioni precedenti: curve con meno decimali, occupano circa la metà
+  for (const run of races) for (const ch of Object.keys((run && run.cells) || {})) {
+    const c = run.cells[ch];
+    if (c && Array.isArray(c.curve)) c.curve = compactCurve(c.curve);
+  }
+  if (races.length && JSON.stringify(races).length < raw.length * 0.95) saveRaces();
+}
+// memoria piena: tiene la metà più recente delle gare (almeno 20), dopo il backup
+function trimOldRaces() {
+  if (races.length <= 20) return;
+  const keep = Math.max(20, Math.floor(races.length / 2));
+  if (!confirm('Togliere le ' + (races.length - keep) + ' gare più vecchie? Restano le ultime ' + keep + '. Si recuperano solo dal backup.')) return;
+  races.length = keep;
+  if (saveRaces()) toast('Fatto: restano le ultime ' + keep + ' gare');
+  renderRaceAll(races[0] || null);
+  if (typeof renderHistoryCells === 'function') renderHistoryCells();
+  renderBkInfo();
+}
+function compactCurve(pts) { return pts.map(p => [Math.round(p[0] * 100) / 100, Math.round(p[1] * 1000) / 1000]); }
+function saveRaces() { return storeSet(RACE_KEY, JSON.stringify(races)); }
 function loadNames() {
   try {
     const o = JSON.parse(localStorage.getItem(NAMES_KEY) || '{}');
@@ -2499,7 +2482,7 @@ function saveNames() {
   try { o = JSON.parse(localStorage.getItem(NAMES_KEY) || '{}'); } catch (e) { o = {}; }
   if (!o || typeof o !== 'object') o = {};
   for (const ch of CHANNELS) o[ch] = $('r_name' + ch).value.trim();
-  try { localStorage.setItem(NAMES_KEY, JSON.stringify(o)); } catch (e) { /* ignora */ }
+  storeSet(NAMES_KEY, JSON.stringify(o));
 }
 
 function raceParams() {
@@ -2605,7 +2588,7 @@ function computeRun(r) {
       Rint, IRch, IRrest: restIR,
       Tstart: tcs.length ? tcs[0] : null,
       dT: tcs.length >= 2 ? tcs[tcs.length - 1] - tcs[0] : null,
-      curve: seg.filter((_, k) => k % step === 0).map(p => [p.x, p.y])
+      curve: compactCurve(seg.filter((_, k) => k % step === 0).map(p => [p.x, p.y]))
     };
   }
   return run;
@@ -2653,11 +2636,12 @@ function relGauss(a, b, tol) {
 }
 
 // voci del confronto: tol = differenza a cui il punteggio della voce scende a ~60%
+// Niente mAh erogati né energia: in 22 s a corrente fissa dipendono dall'uscita usata più che dalla pila.
 const SIM_METRICS = [
-  { key: 'Curva',      w: 0.40, tol: 20,   type: 'curve' },          // RMS tensione sotto carico (mV)
-  { key: 'Capacità',   w: 0.30, tol: 0.04, type: 'rel',  f: 'capGara' },
-  { key: 'Resistenza', w: 0.18, tol: 0.15, type: 'rel',  f: 'Rint' },
-  { key: 'Riposo',     w: 0.12, tol: 15,   type: 'absV', f: 'Vrest' } // tensione a riposo (mV)
+  { key: 'Curva',      w: 0.45, tol: 20,   type: 'curve' },          // RMS tensione sotto carico (mV)
+  { key: 'Resistenza', w: 0.25, tol: 0.15, type: 'rel',  f: 'Rint' },
+  { key: 'Caduta',     w: 0.15, tol: 15,   type: 'absmV', f: 'Vdrop' }, // caduta iniziale sotto carico (mV)
+  { key: 'Riposo',     w: 0.15, tol: 15,   type: 'absV', f: 'Vrest' } // tensione a riposo (mV)
 ];
 
 function pairScore(c1, c2) {
@@ -2667,7 +2651,9 @@ function pairScore(c1, c2) {
     if (m.type === 'curve') {
       if (c1.curve && c2.curve) { const r = curveRms(c1.curve, c2.curve); if (r !== null) sc = gauss(r, m.tol); }
     } else if (isNum(c1[m.f]) && isNum(c2[m.f])) {
-      sc = m.type === 'rel' ? relGauss(c1[m.f], c2[m.f], m.tol) : gauss(Math.abs(c1[m.f] - c2[m.f]) * 1000, m.tol);
+      sc = m.type === 'rel' ? relGauss(c1[m.f], c2[m.f], m.tol)
+         : m.type === 'absmV' ? gauss(Math.abs(c1[m.f] - c2[m.f]), m.tol)
+         : gauss(Math.abs(c1[m.f] - c2[m.f]) * 1000, m.tol);
     }
     if (sc !== null) parts[m.key] = sc;
   }
@@ -2735,7 +2721,7 @@ function cellSeries(name) {
     const c = run.cells[ch];
     if (c && c.curve && c.name === name) {
       pts.push({ date: run.date, E: c.Energy * 1000, V: c.Vmean, R: c.Rint, IR: isNum(c.IRrest) ? c.IRrest : c.IRch,
-                 cap: c.capGara, drop: c.Vdrop, dT: c.dT, Vmot: vMotorOf(c, run) });
+                 cap: c.capGara, drop: c.Vdrop, rest: c.Vrest, dT: c.dT, Vmot: vMotorOf(c, run) });
     }
   }
   return pts;
@@ -2755,15 +2741,22 @@ function cellRow(name) {
   };
   const E = runs.map(p => p.E / 1000);
   const C = runs.map(p => p.cap);
+  const sdOf = arr => {
+    const v = arr.filter(isNum);
+    if (v.length < 2) return null;
+    const m = v.reduce((s, x) => s + x, 0) / v.length;
+    return Math.sqrt(v.reduce((s, x) => s + (x - m) * (x - m), 0) / (v.length - 1));
+  };
+  const Vsd = sdOf(runs.map(p => p.V));
   const R = runs.map(p => (isNum(p.IR) ? p.IR : p.R));
   const irl = (readJSON(IR_KEY, {})[name] || []).map(x => x.r).filter(v => isNum(v) && v > 0);
   const h = cellHealth(caps.map(c => c.mAh), irl.length >= 3 ? irl : R);
   return {
     name, n: runs.length,
     Energy: mean(E), Vmean: mean(runs.map(p => p.V)),
-    Rint: mean(R), Vdrop: mean(runs.map(p => p.drop)),
+    Rint: mean(R), Vdrop: mean(runs.map(p => p.drop)), Vrest: mean(runs.map(p => p.rest)),
     capGara: mean(C),
-    cv: cvOf(E), cvCap: cvOf(C),
+    cv: cvOf(E), cvCap: cvOf(C), rep: isNum(Vsd) ? Vsd * 1000 : null,
     cap: caps.length ? caps[caps.length - 1].mAh : null,
     Vmot: mean(runs.map(p => p.Vmot)),
     Rdc: irl.length ? irl[irl.length - 1] : null,
@@ -2771,29 +2764,37 @@ function cellRow(name) {
   };
 }
 
+// Punteggio rispetto alla pila migliore, con tolleranze fisse: una differenza piccola costa pochi punti
+// (prima la migliore prendeva 100 e la peggiore 0 anche per l'1%). Niente mAh erogati né energia:
+// in 22 s a corrente fissa dipendono dall'uscita usata più che dalla pila.
 function scoreCells(rows) {
   const metrics = [
-    { key: 'capGara', w: 0.25, high: true },
-    { key: 'Energy', w: 0.20, high: true },
-    { key: 'Rint', w: 0.20, high: false },
-    { key: 'Vdrop', w: 0.10, high: false, abs: true },
-    { key: 'Vmean', w: 0.05, high: true },
-    { key: 'cvCap', w: 0.10, high: false },
-    { key: 'cv', w: 0.10, high: false }
+    { key: 'Vmean', w: 0.35, high: true, tol: 0.030 },            // V media sotto carico: 30 mV sotto la migliore ≈ 60
+    { key: 'Rint',  w: 0.25, high: false, rel: true, tol: 0.15 },  // resistenza: 15% sopra la migliore ≈ 60
+    { key: 'Vdrop', w: 0.15, high: false, abs: true, tol: 20 },    // caduta iniziale: 20 mV in più ≈ 60
+    { key: 'rep',   w: 0.25, fixed: [3, 15] }                      // ripetibilità: fino a 3 mV = 100, da 15 mV = 0
   ];
   const val = (r, m) => { const v = r[m.key]; return isNum(v) ? (m.abs ? Math.abs(v) : v) : null; };
   const active = rows.filter(r => r.n > 0);
   for (const r of rows) { r.score = null; for (const m of metrics) delete r['_' + m.key]; }
+  if (active.length < 2) return rows;
   for (const m of metrics) {
+    if (m.fixed) {
+      for (const r of active) {
+        const v = val(r, m);
+        if (v !== null) r['_' + m.key] = Math.max(0, Math.min(1, (m.fixed[1] - v) / (m.fixed[1] - m.fixed[0])));
+      }
+      continue;
+    }
     const vals = active.map(r => val(r, m)).filter(v => v !== null);
     if (vals.length < 2) continue;
-    const lo = Math.min(...vals), hi = Math.max(...vals);
+    const best = m.high ? Math.max(...vals) : Math.min(...vals);
     for (const r of active) {
       const v = val(r, m);
       if (v === null) continue;
-      let norm = hi === lo ? 1 : (v - lo) / (hi - lo);
-      if (!m.high) norm = 1 - norm;
-      r['_' + m.key] = norm;
+      let d = m.high ? best - v : v - best;
+      if (m.rel) d = best ? d / Math.abs(best) : 0;
+      r['_' + m.key] = Math.exp(-0.5 * (d / m.tol) * (d / m.tol));
     }
   }
   for (const r of active) {
@@ -2838,12 +2839,12 @@ function renderRaceSim(run) {
   }
   pairs.sort((x, y) => (y.sim ?? 0) - (x.sim ?? 0));
   const mA = motorAmps();
-  let html = '<div class="group" style="margin:0"><table class="tbl"><tr><th>Coppia</th><th>Somiglianza</th><th>Δ Curva</th><th>Δ Capacità</th><th>Δ R</th><th>Δ Riposo</th>' +
+  let html = '<div class="group" style="margin:0"><table class="tbl"><tr><th>Coppia</th><th>Somiglianza</th><th>Δ Curva</th><th>Δ Caduta</th><th>Δ R</th><th>Δ Riposo</th>' +
              (mA ? '<th>Coppia a ' + fmt(mA, 1) + ' A</th>' : '') + '</tr>';
   pairs.forEach((p, i) => {
     const warn = isNum(p.dRest) && p.dRest > 5 ? ' class="warnc"' : '';
     html += '<tr' + (i === 0 ? ' class="best"' : '') + '><td>' + esc(p.a) + ' · ' + esc(p.b) + '</td><td><b>' + unitStr(p.sim, 1, '%') +
-            '</b></td><td>' + unitStr(p.dCurva, 0, ' mV') + '</td><td>' + unitStr(p.dCap, 0, ' mAh') + '</td><td>' + unitStr(p.dR, 1, ' mΩ') +
+            '</b></td><td>' + unitStr(p.dCurva, 0, ' mV') + '</td><td>' + unitStr(p.dDrop, 0, ' mV') + '</td><td>' + unitStr(p.dR, 1, ' mΩ') +
             '</td><td' + warn + '>' + unitStr(p.dRest, 0, ' mV') + '</td>' + (mA ? '<td>' + unitStr(p.vPair, 3, ' V') + '</td>' : '') + '</tr>';
   });
   html += '</table></div>';
@@ -2875,14 +2876,14 @@ function renderCellBoard() {
   const rest = rows.filter(r => r.score === null);
   const num = (x, d) => (isNum(x) ? x.toFixed(d).replace('.', ',') : '—');
   const mA = motorAmps();
-  let html = '<div class="group" style="margin:0"><table class="tbl"><tr><th>Pila</th><th>Gare</th><th>Erogata mAh</th><th>Energia mWh</th><th>R riposo mΩ</th><th>Ripetib. %</th><th>Punteggio</th>' +
+  let html = '<div class="group" style="margin:0"><table class="tbl"><tr><th>Pila</th><th>Gare</th><th>V media</th><th>Caduta mV</th><th>R riposo mΩ</th><th>Ripetib. mV</th><th>Punteggio</th>' +
              (mA ? '<th>V a ' + fmt(mA, 1) + ' A</th>' : '') + (featOn('irdc') ? '<th>R impulso mΩ</th>' : '') + (featOn('stats') ? '<th>Salute</th>' : '') + '</tr>';
   for (const r of ranked.concat(rest)) {
     const cls = r === ranked[0] ? ' class="best"' : '';
-    const rip = isNum(r.cvCap) ? r.cvCap : r.cv;
+    const rip = r.rep;
     const hc = isNum(r.health) && r.health < 90 ? ' class="warnc"' : '';
-    html += '<tr' + cls + '><td>' + esc(r.name) + '</td><td>' + r.n + '</td><td>' + num(r.capGara, 0) +
-            '</td><td>' + num(r.Energy * 1000, 1) + '</td><td>' + num(r.Rint, 1) +
+    html += '<tr' + cls + '><td>' + esc(r.name) + '</td><td>' + r.n + '</td><td>' + num(r.Vmean, 3) +
+            '</td><td>' + num(r.Vdrop, 0) + '</td><td>' + num(r.Rint, 1) +
             '</td><td>' + num(rip, 1) + '</td><td>' + (r.score === null ? '—' : r.score + '/100') + '</td>' +
             (mA ? '<td>' + num(r.Vmot, 3) + '</td>' : '') + (featOn('irdc') ? '<td>' + num(r.Rdc, 1) + '</td>' : '') +
             (featOn('stats') ? '<td' + hc + '>' + (isNum(r.health) ? r.health + '% ' + healthLabel(r.health) : '—') + '</td>' : '') + '</tr>';
@@ -3124,11 +3125,12 @@ function renderRaceHistory() {
   const summary = [];
   for (const [name, arr] of Object.entries(byName)) {
     const s = { name, n: arr.length, Energy: avg(arr.map(c => c.Energy)), Vmean: avg(arr.map(c => c.Vmean)),
-                Rint: avg(arr.filter(c => c.Rint !== null).map(c => c.Rint)) };
+                Rint: avg(arr.filter(c => c.Rint !== null).map(c => c.Rint)),
+                Vdrop: avg(arr.filter(c => isNum(c.Vdrop)).map(c => c.Vdrop)), Vrest: avg(arr.filter(c => isNum(c.Vrest)).map(c => c.Vrest)) };
     if (!arr.some(c => c.Rint !== null)) s.Rint = null;
     summary.push(s);
   }
-  summary.sort((a, b) => b.Energy - a.Energy);
+  summary.sort((a, b) => (b.Vmean || 0) - (a.Vmean || 0));
   for (const s of summary) html += '<tr><td>' + esc(s.name) + '</td><td>' + s.n + '</td><td>' + fmt(s.Energy * 1000, 1) + ' mWh</td><td>' + fmt(s.Rint, 1) + ' mΩ</td><td>' + fmt(s.Vmean, 3) + ' V</td></tr>';
   html += '</table></div>';
   if (summary.length >= 2) {
@@ -3316,7 +3318,7 @@ setInterval(raceTick, 200);
 
 /* ===================== STORICO PILE ===================== */
 function loadCap() { try { return JSON.parse(localStorage.getItem(CAP_KEY) || '{}'); } catch (e) { return {}; } }
-function saveCap(o) { try { localStorage.setItem(CAP_KEY, JSON.stringify(o)); } catch (e) { /* ignora */ } }
+function saveCap(o) { storeSet(CAP_KEY, JSON.stringify(o)); }
 
 function addCapacity(name, mAh) {
   const o = loadCap();
@@ -3346,6 +3348,8 @@ function summarizeCell(name) {
     Energy: mean(pts.map(p => p.E / 1000)),
     Vmean: mean(pts.map(p => p.V)),
     Rint: mean(pts.filter(p => p.R !== null && p.R !== undefined).map(p => p.R)),
+    Vdrop: mean(pts.filter(p => isNum(p.drop)).map(p => p.drop)),
+    Vrest: mean(pts.filter(p => isNum(p.rest)).map(p => p.rest)),
     cap: caps.length ? caps[caps.length - 1].mAh : null
   };
 }
@@ -3445,7 +3449,7 @@ const REPORT_COLORS = { 1: '#0a84ff', 2: '#8944ab', 3: '#248a3d', 4: '#d70015', 
 
 function buildRaceReportHtml(run) {
   const cells = runChans(run).filter(ch => run.cells[ch] && run.cells[ch].curve).map(ch => Object.assign({ ch }, run.cells[ch]));
-  const ranking = cells.slice().sort((a, b) => b.Energy - a.Energy);
+  const ranking = cells.slice().sort((a, b) => (b.Vmean || 0) - (a.Vmean || 0));
   let body = '<h1>Report gara</h1><p class="meta">' + esc(run.date) + ' · durata ' + run.N + ' s · scarica ' +
              fmt(run.I, 2) + ' A</p>';
   body += '<h2>Risultati</h2><table><tr><th>Pila</th><th>Energia</th><th>I media</th><th>V media</th><th>V fine</th><th>R interna</th></tr>';
@@ -3455,9 +3459,9 @@ function buildRaceReportHtml(run) {
             ' V</td><td>' + fmt(c.Vend, 3) + ' V</td><td>' + fmt(c.Rint, 1) + ' mΩ</td></tr>';
   }
   body += '</table>';
-  body += '<h2>Classifica per energia</h2><table><tr><th>#</th><th>Pila</th><th>Energia</th></tr>';
+  body += '<h2>Classifica per tensione media</h2><table><tr><th>#</th><th>Pila</th><th>V media</th></tr>';
   ranking.forEach((c, i) => {
-    body += '<tr><td>' + (i + 1) + '</td><td>' + esc(c.name) + '</td><td>' + fmt(c.Energy * 1000, 1) + ' mWh</td></tr>';
+    body += '<tr><td>' + (i + 1) + '</td><td>' + esc(c.name) + '</td><td>' + fmt(c.Vmean, 3) + ' V</td></tr>';
   });
   body += '</table>';
   const pairs = [];
@@ -3466,11 +3470,11 @@ function buildRaceReportHtml(run) {
   }
   pairs.sort((x, y) => (y.sim ?? -1) - (x.sim ?? -1));
   if (pairs.length) {
-    body += '<h2>Somiglianza</h2><table><tr><th>Coppia</th><th>Somiglianza</th><th>Δ Curva</th><th>Δ Capacità</th><th>Δ R</th></tr>';
+    body += '<h2>Somiglianza</h2><table><tr><th>Coppia</th><th>Somiglianza</th><th>Δ Curva</th><th>Δ Caduta</th><th>Δ R</th></tr>';
     pairs.forEach((p, i) => {
       body += '<tr' + (i === 0 ? ' class="best"' : '') + '><td>' + esc(p.a) + ' · ' + esc(p.b) + '</td><td>' + fmt(p.sim, 1) +
               '%</td><td>' + (p.dCurva === null ? '—' : fmt(p.dCurva, 0) + ' mV') + '</td><td>' +
-              (p.dCap === null ? '—' : fmt(p.dCap, 0) + ' mAh') + '</td><td>' +
+              (p.dDrop === null ? '—' : fmt(p.dDrop, 0) + ' mV') + '</td><td>' +
               (p.dR === null ? '—' : fmt(p.dR, 1) + ' mΩ') + '</td></tr>';
     });
     body += '</table><p><b>Coppia consigliata:</b> ' + esc(pairs[0].a) + ' + ' + esc(pairs[0].b) +
@@ -3503,7 +3507,7 @@ function buildRaceReportHtml(run) {
   }
   body += '<p class="note">Energia = integrale di tensione × corrente, con la corrente MISURATA dal caricabatterie istante per istante (se per una pila la corrente non è disponibile si usa quella impostata). ' +
           'R interna = misurata dal caricabatterie (media durante la gara). ' +
-          'Somiglianza = confronto pesato di: forma della curva di tensione sotto carico (la voce che pesa di più), capacità erogata, resistenza interna, tensione a riposo. ' +
+          'Somiglianza = confronto pesato di: forma della curva di tensione sotto carico (la voce che pesa di più), resistenza interna, caduta iniziale, tensione a riposo. ' +
           'Δ Curva = differenza media della tensione tra le due pile durante la gara (più è bassa, più vanno uguali).</p>';
   return htmlWrap('Report gara ' + run.date, body);
 }
@@ -3663,7 +3667,29 @@ function readJSON(k, def) {
     return v === null ? def : v;
   } catch (e) { return def; }
 }
-function writeJSON(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* ignora */ } }
+function writeJSON(k, v) { storeSet(k, JSON.stringify(v)); }
+// salvataggio nel browser: se la memoria dell'app è piena lo dice (prima l'errore veniva ignorato in silenzio)
+function storeSet(k, str) {
+  try { localStorage.setItem(k, str); return true; }
+  catch (e) {
+    try { addLog('Salvataggio non riuscito (' + k + '): ' + ((e && e.name) || e)); } catch (e2) { /* ignora */ }
+    if (Date.now() - (storeSet.failAt || 0) > 60000) {
+      storeSet.failAt = Date.now();
+      try {
+        infoBanner('x_full', '<b>Memoria dell\'app piena: l\'ultimo salvataggio non è riuscito.</b> Esporta un backup, poi togli le gare più vecchie per fare spazio.',
+          [['Esporta backup', () => { exportBackup(); setTimeout(trimOldRaces, 800); }, true], ['Chiudi', null]]);
+        nativeCall('alert', 'NC3000', 'Memoria dell\'app piena: salvataggio non riuscito', 99, false);
+      } catch (e3) { /* ignora */ }
+    }
+    return false;
+  }
+}
+// spazio occupato dall'app nel browser, in MB (le stringhe valgono 2 byte per carattere)
+function storeUsedMB() {
+  let n = 0;
+  try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); n += k.length + (localStorage.getItem(k) || '').length; } } catch (e) { return null; }
+  return n * 2 / 1048576;
+}
 
 function downloadFile(name, text, type) {
   const n = window.NC3000Native;
@@ -4087,12 +4113,12 @@ function handleStatusFrame(f) {
   const t = (Date.now() - t0) / 1000;
   const slots = parseOctaStatus(f);
   if (!slots) {
-    rxBad++; $('rxbad').textContent = rxBad;
+    rxBad++;
     if (box) box.textContent = 'Risposta non valida: ' + f.length + ' byte (attesi ' + OCTA_LEN + ', con checksum corretto).\n' + hex(f);
     addLog(t.toFixed(1).padStart(8) + ' s  RX stato non valido (' + f.length + ' byte)');
     return;
   }
-  rxOk++; $('rxok').textContent = rxOk;
+  rxOk++;
   if (octaProbing || detecting) { // una risposta di stato valida = è un Octa
     octaProbing = false; clearTimeout(octaProbeTimer);
     detectionDone('octa', 'Rilevato ' + MODEL_DEF.octa.label + ' (dalla risposta di stato)');
@@ -4603,194 +4629,7 @@ class Flasher{
   }
 }
 
-/* ===========================================================================
-   SIMULATORE (caricatore finto) per i test e per il pulsante "Prova simulata".
-   Implementa lo stesso bus: riceve frame interi, risponde a pezzi da 20 byte.
-   Opzioni: dropAfterPrepare, loseResp (Set di numeri pacchetto di cui perdere
-   la risposta una volta), glitchCounterAt (restituisce contatore sbagliato una
-   volta per testare la ripartenza).
-   =========================================================================== */
-class FakeCharger{
-  constructor(file, opts){
-    opts=opts||{};
-    this.file=file;
-    this.model=opts.model||'100209';
-    this.ver=opts.ver||[0x02,0x38,0x01];      // 2.56 hw1
-    this.dlen=opts.dlen||196;
-    this.dropAfterPrepare=!!opts.dropAfterPrepare;
-    this.loseResp=opts.loseResp||new Set();
-    this.glitchCounterAt=opts.glitchCounterAt||0;
-    this.stallAt=opts.stallAt||0;              // va muto a questo pacchetto (una volta)
-    this._stalled=false;
-    this.dupStatusAt=opts.dupStatusAt||0;      // risponde con byte stato 0 (come un duplicato)
-    this.slotActive=!!opts.slotActive;
-    this.phase='app';                         // app -> boot
-    this.received=new Map();                   // num -> 196 byte
-    this.count=0;                              // pacchetti contigui ricevuti
-    this.busDown=false;
-    this.cb=null;
-    this._glitched=false;
-    this.finishedSum=null;
-  }
-  // interfaccia transport (lato Flasher)
-  attach(cb){ this.cb=cb; }
-  _emit(frame){
-    if(this.busDown) return;
-    // consegna a pezzi da 20 byte
-    for(let i=0;i<frame.length;i+=20){
-      const piece=frame.slice(i,i+20);
-      Promise.resolve().then(()=>{ if(!this.busDown && this.cb) this.cb(piece); });
-    }
-  }
-  async reconnect(force){ this.busDown=false; }
-  // riceve un frame intero dal Flasher
-  async receive(frame){
-    if(this.busDown) return;
-    if(!frameChecksumOk(frame)) return;
-    const cmd=frame[2];
-    if(cmd===0x57){
-      const pid=new Uint8Array(16);
-      for(let i=0;i<6;i++) pid[i]=this.model.charCodeAt(i);
-      pid[11]=this.ver[0]; pid[12]=this.ver[1]; pid[13]=this.ver[2];
-      // risposta lunghezza 0x13: 0F 13 57 00 <16 pid> sum
-      this._emit(buildFrame(0x57, [0x00, ...pid]));
-    } else if(cmd===0x66){
-      const a = this.dlen===196 ? 1 : 0;
-      this._emit(buildFrame(0x66, [0x00, a, 0x00]));
-    } else if(cmd===0x60){
-      if(this.slotActive){ this._emit(buildFrame(0x60,[0x00])); return; }
-      this._emit(buildFrame(0x60,[0x01]));
-      this.phase='boot';
-      // la caduta BLE avviene DOPO che l'ack è stato consegnato (reset del caricatore)
-      if(this.dropAfterPrepare){ setTimeout(()=>{ this.busDown=true; }, 0); }
-    } else if(cmd===0x61){
-      if(this.phase!=='boot') return;
-      const payload=frame.slice(3, frame.length-1);
-      const isHandshake = payload.length>=200 && payload.every(b=>b===0);
-      if(isHandshake){
-        // come il bootloader vero: l'handshake AZZERA il buffer → si riparte da 1
-        this.received=new Map(); this.count=0;
-        this._emit(buildFrame(0x61,[0x00,0x00,0x00]));   // contatore 0 = pronto
-        return;
-      }
-      const num=(payload[0]<<8)|payload[1];
-      const data=payload.slice(4, 4+DATA_LEN);
-      // blocco a metà (una volta): vado muto e "cade" il BLE finché non ci si ricollega
-      if(this.stallAt && num===this.stallAt && !this._stalled){
-        this._stalled=true; this.busDown=true; return;
-      }
-      // accetto solo il pacchetto atteso (contiguo)
-      if(num===this.count+1){ this.received.set(num, data); this.count=num; }
-      // eventuale perdita di risposta (una volta)
-      if(this.loseResp.has(num)){ this.loseResp.delete(num); return; }
-      // eventuale contatore sbagliato (una volta) per testare la ripartenza
-      let repCount=this.count;
-      if(this.glitchCounterAt && num===this.glitchCounterAt && !this._glitched){
-        this._glitched=true; repCount=Math.max(0,this.count-1);   // fingo di averne uno in meno
-        this.received.delete(this.count); this.count=repCount;
-      }
-      // il byte "stato" può essere 0 (come un duplicato): il client deve fidarsi del contatore
-      const statusByte = (this.dupStatusAt && num===this.dupStatusAt) ? 0x00 : 0x01;
-      const ack=buildFrame(0x61,[statusByte,(repCount>>8)&0xff, repCount&0xff]);
-      // come il caricatore vero: manda l'ack 3 volte (il client deve ignorare i duplicati)
-      this._emit(ack); this._emit(ack); this._emit(ack);
-    } else if(cmd===0x62){
-      const p=frame.slice(3, frame.length-1);
-      const got=(p[0])|(p[1]<<8)|(p[2]<<16)|(p[3]<<24);
-      // ricostruisco l'immagine e confronto col file
-      const img=this.rebuild();
-      const sum=computeSum(this.file)>>>0;
-      this.finishedSum=got>>>0;
-      const same = img.length>=this.file.length && eqBytes(img.slice(0,this.file.length), this.file) && (got>>>0)===sum;
-      this._emit(buildFrame(0x62,[ same?0x01:0x00 ]));
-    }
-  }
-  rebuild(){
-    const parts=[]; for(let i=1;i<=this.count;i++){ const d=this.received.get(i); if(!d) break; parts.push(d); }
-    const out=new Uint8Array(parts.length*DATA_LEN);
-    parts.forEach((d,i)=>out.set(d, i*DATA_LEN));
-    return out;
-  }
-}
-function eqBytes(a,b){ if(a.length!==b.length) return false; for(let i=0;i<a.length;i++) if(a[i]!==b[i]) return false; return true; }
-
-// transport che collega Flasher <-> FakeCharger
-class FakeTransport{
-  constructor(charger){ this.c=charger; this.connected=true; charger.attach((bytes)=>{ if(this._cb) this._cb(bytes); }); }
-  onData(cb){ this._cb=cb; }
-  isConnected(){ return this.connected && !this.c.busDown; }
-  async send(frame, fast){ if(this.c.busDown){ throw new Error('bus down'); } await this.c.receive(toBytes(frame)); }
-  async reconnect(force){ await this.c.reconnect(force); this.connected=true; }
-}
-
-/* ===========================================================================
-   SELF-TEST: esegue scenari contro il simulatore e verifica l'immagine.
-   =========================================================================== */
-function makeFakeFirmware(size){
-  // file "valido": SP in RAM, reset vector dispari dentro il range
-  const n=size||220*1024;
-  const b=new Uint8Array(n);
-  const dv=new DataView(b.buffer);
-  dv.setUint32(0, 0x2000f000, true);       // SP
-  dv.setUint32(4, 0x0800c1dd, true);       // reset (dispari)
-  let x=0x12345678;
-  for(let i=8;i<n;i++){ x=(x*1103515245+12345)&0x7fffffff; b[i]=x&0xff; }
-  return b;
-}
-async function runScenario(name, opts, logln){
-  const file=opts.file || makeFakeFirmware(opts.size);
-  const fake=new FakeCharger(file, opts);
-  const tr=new FakeTransport(fake);
-  const logs=[];
-  const fl=new Flasher(tr, { timeScale: 0.004, log:(m)=>logs.push(m), onProgress:()=>{} });
-  const id=await fl.identify();
-  if(id.model!=='100209') throw new Error('modello non riconosciuto');
-  const dlen=await fl.queryBootloader();
-  if(dlen!==196) throw new Error('bootloader a 16 byte');
-  await fl.run(file, { major:id.major, minor:id.minor, hw:id.hw, skipPrepare:opts.skipPrepare });
-  // verifica finale: l'immagine ricostruita dal simulatore == file, e la somma inviata è giusta
-  const img=fake.rebuild();
-  const okImg = img.length>=file.length && eqBytes(img.slice(0,file.length), file);
-  const okSum = fake.finishedSum===(computeSum(file)>>>0);
-  if(!okImg) throw new Error('immagine ricevuta diversa dal file');
-  if(!okSum) throw new Error('somma finale errata');
-  logln('✓ '+name+' — immagine identica ('+file.length+' byte), somma ok');
-  return true;
-}
-async function runSelfTest(logln){
-  logln('— Prova simulata: inizio —');
-  let pass=0, fail=0;
-  const scenarios=[
-    ['Normale',                         {}],
-    ['Caduta e ricollegamento BLE',     {dropAfterPrepare:true}],
-    ['Risposte perse (pacch. 2,5,9)',   {loseResp:new Set([2,5,9])}],
-    ['Contatore sfasato (ripartenza)',  {glitchCounterAt:4}],
-    ['Caduta + perdite insieme',        {dropAfterPrepare:true, loseResp:new Set([1,3,7])}],
-    ['Blocco a metà + ripartenza auto', {stallAt:120}],
-    ['Risposta "duplicato" (stato 0)',  {dupStatusAt:3}],
-    ['File piccolo (160 KB)',           {size:160*1024}],
-    ['File grande (380 KB)',            {size:380*1024}],
-  ];
-  for(const [nm,opt] of scenarios){
-    try{ await runScenario(nm, opt, logln); pass++; }
-    catch(e){ logln('✗ '+nm+' — '+e.message); fail++; }
-  }
-  // scenario "slot attivo": il prepara deve essere rifiutato
-  try{
-    const file=makeFakeFirmware(200*1024);
-    const fake=new FakeCharger(file,{slotActive:true});
-    const fl=new Flasher(new FakeTransport(fake),{timeScale:0.004, log:()=>{}});
-    await fl.identify(); await fl.queryBootloader();
-    let rejected=false;
-    try{ await fl.run(file,{major:2,minor:0x38,hw:1}); }catch(e){ rejected = (e.message==='REJECTED'); }
-    if(rejected){ logln('✓ Slot attivo — prepara correttamente rifiutato'); pass++; }
-    else { logln('✗ Slot attivo — avrebbe dovuto rifiutare'); fail++; }
-  }catch(e){ logln('✗ Slot attivo — '+e.message); fail++; }
-  logln('— Prova simulata: '+pass+' superati, '+fail+' falliti —');
-  return {pass, fail};
-}
-return { TIMING, DATA_LEN, buildFrame, frameChecksumOk, validateFirmware, computeSum, Flasher,
-         FakeCharger, FakeTransport, runSelfTest, runScenario, makeFakeFirmware, eqBytes };
+return { TIMING, DATA_LEN, buildFrame, frameChecksumOk, validateFirmware, computeSum, Flasher };
 })();
 
 // ---------- aggiornamento firmware dentro l'app (solo NC3000 Pro) ----------
@@ -5059,9 +4898,9 @@ async function fwFlash(resume) {
     let note = '';
     if (fw.official) {
       if (proFirmware !== 'orig') setFirmware('orig');
-      note = ' Nel Monitor il firmware è impostato su «Originale».';
-    } else if (proFirmware !== 'mod') {
-      note = ' Se è il tuo firmware modificato, nel Monitor scegli «Modificato».';
+      note = ' Nel Monitor il firmware è impostato su «originale».';
+    } else {
+      note = ' Al collegamento l\'app riconosce da sola il firmware.';
     }
     fw.msg = 'Fatto: il caricatore ha confermato il nuovo firmware. Spegnilo e riaccendilo, poi premi «Connetti».' + note;
     fw.msgKind = 'ok';
@@ -5175,7 +5014,6 @@ function fwRender() {
   msg.textContent = fw.busy ? 'Scrittura in corso.' : (fw.msg || (idle ? fwStartHint(ready, fileOk) : ''));
   msg.className = 'hint' + (!fw.busy && fw.msgKind ? ' is-' + fw.msgKind : '');
   $('fwBack').disabled = fw.busy;
-  $('fwSim').disabled = fw.busy || fw.simRunning;
   fwRenderPhases();
 }
 
@@ -5190,12 +5028,6 @@ $('fwResume').onclick = () => fwFlash(true);
 $('fwCopy').onclick = async () => {
   try { await navigator.clipboard.writeText(fw.log.join('\n')); fwLog('(registro copiato)'); }
   catch (e) { fwLog('Copia non riuscita: apri il registro e seleziona il testo a mano.'); }
-};
-$('fwSim').onclick = async () => {
-  if (fw.busy || fw.simRunning) return;
-  fw.simRunning = true; fwRender();
-  $('fwLogBox').open = true;
-  try { await FWU.runSelfTest(fwLog); } finally { fw.simRunning = false; fwRender(); fwRenderLog(); }
 };
 $('fwStandalone').href = FW_UPDATER_URL;
 if (window.addEventListener) window.addEventListener('beforeunload', e => { if (fw.busy) { e.preventDefault(); e.returnValue = ''; } });
@@ -5414,7 +5246,9 @@ function renderBkInfo() {
   const el = $('x_bkInfo'); if (!el) return;
   const app = !!(window.NC3000Native && window.NC3000Native.saveFile);
   const when = extra.lastBkAt ? new Date(extra.lastBkAt).toLocaleDateString('it-IT') : 'mai';
-  el.textContent = (app ? 'Backup automatico in Download/NC3000 dopo ogni gara (al massimo uno al giorno). ' : 'Ti ricordo di esportare il backup ogni settimana. ') + 'Ultimo backup: ' + when + '.';
+  const mb = storeUsedMB();
+  el.textContent = (app ? 'Backup automatico in Download/NC3000 dopo ogni gara (al massimo uno al giorno). ' : 'Ti ricordo di esportare il backup ogni settimana. ') + 'Ultimo backup: ' + when + '.' +
+    (mb !== null ? ' Spazio usato dall\'app: ' + (mb < 0.1 ? 'meno di 0,1' : mb.toFixed(1).replace('.', ',')) + ' MB.' : '');
 }
 function autoBackup() {
   const sig = backupSig();
@@ -5709,7 +5543,7 @@ function showInfo(btn) {
   if (!pop.hidden && pop._from === btn) { pop.hidden = true; return; }
   const src = btn.dataset.infoSrc ? document.getElementById(btn.dataset.infoSrc) : null;
   let text = btn.dataset.info || '';
-  if (btn.dataset.infoSrc === 'fwHint') text = 'Scegli «Modificato» se sul caricabatterie c\'è il firmware BANNED: l\'app sblocca i valori che il firmware permette (' + (src ? src.textContent : '') + '). Con «Originale» restano i limiti SkyRC.';
+  if (btn.dataset.infoSrc === 'fwHint') text = 'L\'app riconosce il firmware da sola quando ti colleghi: il firmware BANNED risponde al comando delle temperature, l\'originale no. Adesso: ' + (src ? src.textContent : '') + (proFirmware === 'mod' ? '.' : '. Con l\'originale restano i limiti SkyRC.');
   pop.textContent = text; pop._from = btn; pop.hidden = false;
   const r = btn.getBoundingClientRect(), w = pop.offsetWidth, h = pop.offsetHeight;
   let left = Math.min(Math.max(12, r.left + r.width / 2 - w / 2), window.innerWidth - w - 12);
@@ -5782,11 +5616,6 @@ function vcrButtons(ch) {
 }
 function fillVcr() {
   document.querySelectorAll('.vcr[data-vcr]').forEach(el => { if (!el.firstChild) el.innerHTML = vcrButtons(el.dataset.vcr); });
-  const st = $('progStrip');
-  if (st && st.dataset.k !== CHANNELS.join(',')) {
-    st.dataset.k = CHANNELS.join(',');
-    st.innerHTML = CHANNELS.map(ch => '<div class="it" style="--ch:' + COLORS[ch] + '"><div class="lb">CH' + ch + '<small data-ctlst="' + ch + '">—</small></div><div class="vcr">' + vcrButtons(ch) + '</div></div>').join('');
-  }
 }
 function updateCtl() {
   fillVcr();
@@ -5803,10 +5632,6 @@ function updateCtl() {
       if (act === 'pause') b.title = st === 'run' && !lastStart[c] ? 'Avviato dal caricabatterie: si può solo fermare' : '';
     }
     b.disabled = !on || !en;
-  });
-  document.querySelectorAll('[data-ctlst]').forEach(el => {
-    const c = Number(el.dataset.ctlst), st = ctlState(c), s = latest[c];
-    el.textContent = st === 'paused' ? 'in pausa' : st === 'run' ? ({ 2: 'carica', 3: 'scarica', 4: 'riposo' }[s.stato] || 'in corso') + ' · ' + s.cap + ' mAh' : s ? 'ferma' : '—';
   });
 }
 function pauseCh(ch) {
