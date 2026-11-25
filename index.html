@@ -612,6 +612,23 @@
       </div>
       <p id="stopHint" class="hint">Lo stop parte subito, senza controlli.</p>
     </div>
+
+    <details class="adv" id="eqBox">
+      <summary>Equalizza (firmware BANNED v12)</summary>
+      <div class="group">
+        <div class="row"><label>Tensione a riposo<small class="hint">da 0,90 a 1,30 V</small></label><div class="val"><input type="number" id="eq_target" value="1.00" step="0.01" min="0.90" max="1.30" inputmode="decimal"><span class="unit">V</span></div></div>
+        <div class="row"><label>Tenuta<small class="hint">ferma all'obiettivo, da 1 a 30</small></label><div class="val"><input type="number" id="eq_hold" value="5" min="1" max="30" inputmode="numeric"><span class="unit">min</span></div></div>
+        <div class="row"><label class="pick"><input type="checkbox" id="eq_ch1" checked><span class="dot" style="--ch:var(--c1)"></span>Uscita 1</label><div class="val"><span class="hint" id="eq_st1"></span></div></div>
+        <div class="row"><label class="pick"><input type="checkbox" id="eq_ch2" checked><span class="dot" style="--ch:var(--c2)"></span>Uscita 2</label><div class="val"><span class="hint" id="eq_st2"></span></div></div>
+        <div class="row"><label class="pick"><input type="checkbox" id="eq_ch3" checked><span class="dot" style="--ch:var(--c3)"></span>Uscita 3</label><div class="val"><span class="hint" id="eq_st3"></span></div></div>
+        <div class="row"><label class="pick"><input type="checkbox" id="eq_ch4" checked><span class="dot" style="--ch:var(--c4)"></span>Uscita 4</label><div class="val"><span class="hint" id="eq_st4"></span></div></div>
+      </div>
+      <div class="inner">
+        <div class="btns two"><button id="btnEqStart" class="btn" disabled>Avvia equalizzazione</button><button id="btnEqStop" class="btn danger" disabled>Ferma</button></div>
+        <p class="hint">Porta ogni pila alla stessa tensione a riposo con brevi impulsi del carico di scarica, poi aspetta che resti lì per il tempo di tenuta. Si ferma da sola se la pila supera 45 °C, dopo 3 ore, se la togli, se premi un tasto del caricatore o se avvii un programma. Durante l'equalizzazione corrente e mAh restano a zero: conta la tensione.</p>
+        <p id="eqHint" class="hint"></p>
+      </div>
+    </details>
   </section>
 
 
@@ -746,6 +763,7 @@ const CHR = '0000ffe1-0000-1000-8000-00805f9b34fb';
 const CMD_HEARTBEAT = 0xEE, CMD_NC_DATA = 0x91, CMD_START = 0x94, CMD_STOP = 0xFE;
 const CMD_INFO = 0x57;
 const CMD_STATUS_OCTA = 0x9A; // stato di tutti gli slot (Octa), sola lettura // richiesta di informazioni (sola lettura), come Cmd.getDeviceInfo dell'app ufficiale
+const CMD_EQ = 0xC8;         // firmware BANNED v12+: equalizzazione (avvio/stop), risponde con 0xC7
 const CMD_TEMP10 = 0xC7;     // firmware BANNED v10+: temperatura dei 4 canali in decimi di grado (0F 03 C7 00 C7)
 const CMD_HISTORY = 0x98;     // storico della curva di un'uscita (sola lettura), come Cmd.queryHistoryData dell'app ufficiale
 const MASK_OF_POS = { 1: 1, 2: 2, 3: 4, 4: 8, 5: 16, 6: 32, 7: 64, 8: 128 };
@@ -829,6 +847,10 @@ let tempSeen = false;       // il caricatore manda la temperatura dei canali (by
 let temp10 = {};            // canale -> { c: °C con un decimale, t: secondi } dall'ultima risposta 0xC7
 let temp10Seen = false;     // il firmware risponde al comando 0xC7 (decimi di grado)
 let endInfo = {};           // canale -> { reason, drop } motivo dell'ultima fine carica (0xC7 versione 2, firmware v11+)
+let eqState = {};           // canale -> stato dell'equalizzazione (0xC7 versione 3, firmware v12+)
+let eqSeen = false;
+const EQ_TEXT = { 1: 'in corso', 2: 'in tenuta', 3: 'completata', 4: 'fermata: oltre 45 °C', 5: 'fermata: pila tolta',
+  6: 'fermata: 3 ore raggiunte', 7: 'fermata: programma avviato', 8: 'fermata dalla app', 9: 'non avviata: uscita occupata o senza pila', 10: 'fermata: tasto premuto' };
 const END_REASON_TEXT = { 1: '−ΔV', 2: 'calo prolungato dopo il picco', 3: 'tensione ferma per alcuni minuti', 4: 'tensione massima' };
 function endText(e) { return END_REASON_TEXT[e.reason] + (e.drop ? ' (calo ' + e.drop + ' mV dal picco)' : ''); }
 const TEMP10_FRESH_S = 3;   // una lettura 0xC7 vale per i pacchetti 0x91 dei 3 secondi successivi
@@ -845,7 +867,8 @@ function fmtTemp(c) { return temp10Seen ? c.toFixed(1).replace('.', ',') : Strin
 // risposta 0xC7: 0F 0C C7 0F T1h T1l T2h T2l T3h T3l T4h T4l 01 somma  (Tn = °C × 10, FFFF = non valida)
 // versione 2 (firmware v11+): 0F 14 C7 0F T1..T4 02 R1..R4 D1..D4 somma  (Rn motivo fine carica, Dn calo dal picco in mV)
 function handleTemp10Frame(f, t) {
-  const v2 = f.length === 22 && f[1] === 20 && f[12] === 2;
+  const v3 = f.length === 26 && f[1] === 24 && f[12] === 3;
+  const v2 = v3 || (f.length === 22 && f[1] === 20 && f[12] === 2);
   if (!v2 && (f.length !== 14 || f[1] !== 12) || f[3] !== 0x0F) {
     addLog(t.toFixed(1).padStart(8) + ' s  RX temperatura non riconosciuta ' + hex(f));
     return;
@@ -862,6 +885,16 @@ function handleTemp10Frame(f, t) {
     const prev = endInfo[ch];
     endInfo[ch] = { reason, drop };
     if (reason && END_REASON_TEXT[reason] && (!prev || prev.reason !== reason)) addLog('CH' + ch + ' fine carica: ' + endText(endInfo[ch]));
+  }
+  if (v3) {
+    if (!eqSeen) { eqSeen = true; updateEqButtons(); }
+    for (let ch = 1; ch <= 4; ch++) {
+      const st = f[20 + ch];
+      if ((eqState[ch] || 0) !== st && st) addLog('CH' + ch + ' equalizzazione: ' + (EQ_TEXT[st] || ('stato ' + st)));
+      eqState[ch] = st;
+      const el = $('eq_st' + ch);
+      if (el) el.textContent = st ? (EQ_TEXT[st] || ('stato ' + st)) : '';
+    }
   }
   if (!temp10Seen) { temp10Seen = true; addLog('Il firmware manda la temperatura con un decimale (0xC7)'); }
   tempSeen = true;
@@ -1112,6 +1145,14 @@ function assertAllowed(cmd, payload) {
   if (cmd === CMD_STATUS_OCTA) return payload.length === 1 && payload[0] === 0x00;
   if (cmd === CMD_START) return payload.length === 40 && isSlotMask(payload[0]);
   if (cmd === CMD_HISTORY) return payload.length === 1 && isSlotMask(payload[0]);
+  // firmware BANNED v10+: lettura delle temperature in decimi, solo lettura, solo NC3000 Pro
+  if (cmd === CMD_TEMP10) return currentModel !== 'octa' && payload.length === 1 && payload[0] === 0x00;
+  if (cmd === CMD_EQ) {
+    if (currentModel === 'octa' || payload.length !== 5 || !(payload[1] >= 1 && payload[1] <= 15)) return false;
+    if (payload[0] === 0) return true;
+    const mv = (payload[2] << 8) | payload[3];
+    return payload[0] === 1 && mv >= 900 && mv <= 1300 && payload[4] >= 1 && payload[4] <= 30;
+  }
   return false;
 }
 
@@ -1706,7 +1747,7 @@ async function connect() {
     char = await svc.getCharacteristic(CHR);
     useWnR = !!char.properties.writeWithoutResponse;
     if (!useWnR && !char.properties.write) throw new Error('caratteristica non scrivibile');
-    rxBuf = []; samples = []; latest = {}; histData = {}; lastHistoryDump = null; tempSeen = false; temp10 = {}; temp10Seen = false; endInfo = {};
+    rxBuf = []; samples = []; latest = {}; histData = {}; lastHistoryDump = null; tempSeen = false; temp10 = {}; temp10Seen = false; endInfo = {}; eqState = {}; eqSeen = false;
     clearTimeout(autoHistTimer);
     txCount = 0; rxOk = 0; rxBad = 0; logLines = [];
     t0 = Date.now();
@@ -1808,6 +1849,39 @@ function stopReasons() {  // lo stop è immediato: basta essere connessi
   return why;
 }
 
+function eqMask() {
+  let m = 0;
+  for (let ch = 1; ch <= 4; ch++) if ($('eq_ch' + ch).checked) m |= 1 << (ch - 1);
+  return m;
+}
+function updateEqButtons() {
+  const ok = isLinked() && currentModel !== 'octa';
+  $('btnEqStart').disabled = !ok;
+  $('btnEqStop').disabled = !ok;
+  $('eqHint').textContent = !isLinked() ? 'Connetti prima il caricabatterie.'
+    : currentModel === 'octa' ? 'Solo per NC3000 Pro con firmware BANNED v12.'
+    : eqSeen ? '' : 'Il firmware non ha ancora risposto: serve la v12 e le letture avviate.';
+}
+function eqStart() {
+  const v = Number(String($('eq_target').value).replace(',', '.'));
+  const hold = Math.round(Number($('eq_hold').value));
+  const m = eqMask();
+  const errs = [];
+  if (!(v >= 0.9 && v <= 1.3)) errs.push('tensione a riposo fra 0,90 e 1,30 V');
+  if (!(hold >= 1 && hold <= 30)) errs.push('tenuta fra 1 e 30 minuti');
+  if (!m) errs.push('scegli almeno un\'uscita');
+  if (errs.length) { $('eqHint').textContent = 'Controlla: ' + errs.join(', ') + '.'; return; }
+  const mv = Math.round(v * 1000);
+  if (sendSafe(CMD_EQ, [1, m, mv >> 8, mv & 255, hold], '0xC8 equalizza') !== null) {
+    $('eqHint').textContent = 'Avviata a ' + v.toFixed(2).replace('.', ',') + ' V, tenuta ' + hold + ' min.';
+    addLog('Equalizzazione avviata: ' + mv + ' mV a riposo, tenuta ' + hold + ' min, uscite ' + [1, 2, 3, 4].filter(c => m & (1 << (c - 1))).join(', '));
+  }
+}
+function eqStop() {
+  const m = eqMask() || 15;
+  if (sendSafe(CMD_EQ, [0, m, 0, 0, 0], '0xC8 ferma') !== null) $('eqHint').textContent = 'Stop inviato.';
+}
+
 function updateStartButton() {
   const sr = startBlockers();
   const tr = stopReasons();
@@ -1822,6 +1896,7 @@ function updateStartButton() {
   if (sr.length) $('startHint').textContent = sr[0].charAt(0).toUpperCase() + sr[0].slice(1) + '.';
   else if (/^Connetti|^Attendi/.test($('startHint').textContent)) $('startHint').textContent = '';
   updateRaceButton();
+  updateEqButtons();
 }
 
 function startProgram() {
@@ -1922,6 +1997,8 @@ $('chartV').onclick = () => { $('chartV').classList.toggle('big'); drawAll(); };
 if (window.addEventListener) window.addEventListener('resize', () => drawAll());
 $('btnHistSave').onclick = saveHistory;
 $('btnStart').onclick = startProgram;
+$('btnEqStart').onclick = eqStart;
+$('btnEqStop').onclick = eqStop;
 $('btnStartAll').onclick = startAll;
 $('btnStopCh').onclick = () => stopChannel(Number($('p_position').value));
 $('btnStopAll').onclick = stopAll;
@@ -3077,6 +3154,7 @@ function renderLatest() {
       '</div>' +
       (s.err ? '<div class="errline">' + errText(s.err) + '</div>' : '') +
       (endInfo[ch] && END_REASON_TEXT[endInfo[ch].reason] && s.stato !== 2 ? '<div class="sub">Fine carica: ' + endText(endInfo[ch]) + '</div>' : '') +
+      (eqState[ch] && EQ_TEXT[eqState[ch]] ? '<div class="sub">Equalizzazione: ' + EQ_TEXT[eqState[ch]] + '</div>' : '') +
       '<div class="sub">' + (idle ? 'Nessun programma in corso' : 'Programma: ' + modo) + '</div></div>';
   }).join('');
 }
