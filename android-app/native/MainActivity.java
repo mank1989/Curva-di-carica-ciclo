@@ -1,8 +1,5 @@
 package com.banned.nc3000;
 
-import android.Manifest;
-import android.content.pm.PackageManager;
-import android.os.Build;
 import android.os.Bundle;
 import android.view.View;
 
@@ -13,10 +10,6 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(KeepAlivePlugin.class);
         super.onCreate(savedInstanceState);
-        // Android 13+: senza questo permesso la notifica del servizio non si vede (il servizio funziona lo stesso)
-        if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 77);
-        }
     }
 
     // In secondo piano la pagina deve continuare a girare (letture ogni 250 ms): si tiene la finestra «visibile» per la WebView

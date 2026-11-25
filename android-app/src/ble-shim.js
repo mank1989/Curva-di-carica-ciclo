@@ -17,6 +17,22 @@ const toDV = v => {
 };
 
 
+// Messaggio ben visibile (la scritta in alto è troppo corta per leggere gli errori).
+function showMsg(text) {
+  try {
+    const doc = document;
+    const ov = doc.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;font-family:sans-serif';
+    const box = doc.createElement('div');
+    box.style.cssText = 'width:min(92vw,420px);background:#161a22;color:#e8eaed;border-radius:16px;padding:18px;box-sizing:border-box;font-size:15px;line-height:1.4';
+    const t = doc.createElement('div'); t.textContent = String(text); t.style.cssText = 'word-break:break-word;white-space:pre-wrap';
+    const b = doc.createElement('button'); b.textContent = 'OK';
+    b.style.cssText = 'margin-top:14px;width:100%;padding:12px;border-radius:10px;border:0;background:#f5c542;color:#000;font-size:16px;font-weight:700';
+    b.onclick = () => ov.remove();
+    box.append(t, b); ov.append(box); doc.body.appendChild(ov);
+  } catch (e) { /* ignora */ }
+}
+
 // Elenco dispositivi disegnato dalla pagina stessa (non dipende dalla finestra nativa del plugin).
 function pickDevice(Ble, req) {
   return new Promise((resolve, reject) => {
@@ -152,7 +168,7 @@ export function createBluetooth(Ble, hooks = {}) {
   return {
     async getAvailability() { return true; },
     async requestDevice(options = {}) {
-      await init();
+      try { await init(); } catch (e) { showMsg('Bluetooth: ' + ((e && e.message) || JSON.stringify(e))); throw e; }
       const req = { optionalServices: (options.optionalServices || []).map(norm) };
       const f = options.filters && options.filters[0];
       if (f) {
