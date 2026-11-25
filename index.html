@@ -634,24 +634,26 @@
       <div class="row" data-modes="0 3"><label>Capacità</label><div class="val"><input type="number" id="p_capacity" value="950" inputmode="numeric"><span class="unit">mAh</span></div></div>
       <div class="row" data-modes="0 3"><label>Carica a<small class="hint" id="p_chargeMax">max 3,00 A</small></label><div class="val"><input type="number" id="p_chargeE" value="0.50" step="0.05" max="3.00" inputmode="decimal"><span class="unit">A</span></div></div>
       <div class="row" data-modes="1 3"><label>Scarica a<small class="hint" id="p_dischargeMax">max 2,80 A</small></label><div class="val"><input type="number" id="p_dischargeE" value="2.50" step="0.05" inputmode="decimal"><span class="unit">A</span></div></div>
-      <div class="row" data-modes="0 3"><label>Corrente di spegnimento<small class="hint">0 = spento</small></label><div class="val"><input type="number" id="p_inStopCurrent" value="0" step="0.01" inputmode="decimal"><span class="unit">A</span></div></div>
+      <div class="row" data-modes=""><label>Corrente di spegnimento<small class="hint">0 = spento</small></label><div class="val"><input type="number" id="p_inStopCurrent" value="0" step="0.01" inputmode="decimal"><span class="unit">A</span></div></div>
       <div class="row" data-modes="0 3"><label>Target Voltage</label><div class="val"><input type="number" id="p_inStopVoltage" value="1.70" step="0.01" inputmode="decimal"><span class="unit">V</span></div></div>
       <div class="row" data-modes="1"><label>Corrente di spegnimento<small class="hint">0 = spento</small></label><div class="val"><input type="number" id="p_outStopCurrent" value="0" step="0.01" inputmode="decimal"><span class="unit">A</span></div></div>
       <div class="row" data-modes="1 3"><label>Tensione di spegnimento</label><div class="val"><input type="number" id="p_outStopVoltage" value="0.99" step="0.01" inputmode="decimal"><span class="unit">V</span></div></div>
       <div class="row" data-modes="0 1 3"><label>Timer di spegnimento<small class="hint">0 = spento</small></label><div class="val"><input type="number" id="p_inTimeProtect" value="180" inputmode="numeric"><span class="unit">min</span></div></div>
-      <div class="row" data-modes="0 3"><label>Tempo di pausa di ricarica</label><div class="val"><input type="number" id="p_chargeRestTime" value="5" inputmode="numeric"><span class="unit">min</span></div></div>
+      <div class="row" data-modes="3"><label>Tempo di pausa di ricarica</label><div class="val"><input type="number" id="p_chargeRestTime" value="5" inputmode="numeric"><span class="unit">min</span></div></div>
       <div class="row" data-modes="3"><label>Scarico a riposo</label><div class="val"><input type="number" id="p_dischargeRestTime" value="10" inputmode="numeric"><span class="unit">min</span></div></div>
       <div class="row" data-modes="0 3"><label>Delta Peak −ΔV</label><div class="val"><input type="number" id="p_detalV" value="6" inputmode="numeric"><span class="unit">mV</span></div></div>
       <div class="row" data-modes="3"><label>Modalità ciclo</label><div class="val"><select id="p_cycleMode"><option value="0" selected>C→D</option><option value="1">D→C</option><option value="2">C→D→C</option><option value="3">D→C→D</option></select></div></div>
       <div class="row" data-modes="3"><label>Numero di cicli<small class="hint" id="p_cycleMax">max 3</small></label><div class="val"><input type="number" id="p_cycleCount" value="3" min="1" max="3" inputmode="numeric"><span class="unit"></span></div></div>
       <div class="row" data-modes="0 3"><label>Modalità attuale</label><div class="val"><select id="p_truboMode"><option value="0" selected>Fissa</option><option value="1">IR Auto</option></select></div></div>
+      <div class="row" data-modes="0"><label>Carica di mantenimento<small class="hint">trickle a fine carica · 0 = spenta</small></label><div class="val"><input type="number" id="p_track" value="0" step="10" min="0" max="500" inputmode="numeric"><span class="unit">mA</span></div></div>
+      <div class="row" data-modes="0"><label>Tensione di ripartenza<small class="hint">sotto questa la carica riparte · 0 = spenta</small></label><div class="val"><input type="number" id="p_restartVolt" value="0" step="0.01" min="0" max="1.50" inputmode="decimal"><span class="unit">V</span></div></div>
     </div>
 
     <details class="adv">
       <summary>Protezioni avanzate</summary>
       <div class="group">
         <div class="row"><label>Temperatura massima</label><div class="val"><input type="number" id="p_tempProtect" value="60" inputmode="numeric"><span class="unit">°C</span></div></div>
-        <div class="row"><label>Capacità massima</label><div class="val"><input type="number" id="p_inMaxbostCapacity" value="300" inputmode="numeric"><span class="unit">mAh</span></div></div>
+        <div class="row" data-modes=""><label>Capacità massima</label><div class="val"><input type="number" id="p_inMaxbostCapacity" value="300" inputmode="numeric"><span class="unit">mAh</span></div></div>
       </div>
     </details>
 
@@ -667,8 +669,6 @@
       </div>
     </details>
 
-    <input type="hidden" id="p_track" value="0">
-    <input type="hidden" id="p_restartVolt" value="0">
 
     <div class="launch">
       <div class="btns"><button id="btnStart" class="btn" disabled>Avvia su uscita 1</button></div>
@@ -1163,7 +1163,7 @@ function checksumOk(f) {
 
 // Parametri letti dalla pagina
 // Unità della UI come l'app ufficiale (A, V); il comando usa mA e mV
-const UNIT_SCALE = { chargeE: 1000, dischargeE: 1000, inStopVoltage: 1000, outStopVoltage: 1000, inStopCurrent: 1000, outStopCurrent: 1000 };
+const UNIT_SCALE = { chargeE: 1000, dischargeE: 1000, inStopVoltage: 1000, outStopVoltage: 1000, inStopCurrent: 1000, outStopCurrent: 1000, restartVolt: 1000 };
 function readParams() {
   const p = {};
   for (const k of Object.keys(LIMITS).concat(['capacity', 'chargeE', 'dischargeE'])) {
@@ -1182,19 +1182,21 @@ const FIELD_INFO = {
   capacity:          { label: 'Capacità', unit: 'mAh', modes: [0, 3] },
   chargeE:           { label: 'Carica a', unit: 'A', modes: [0, 3] },
   dischargeE:        { label: 'Scarica a', unit: 'A', modes: [1, 3] },
-  inStopCurrent:     { label: 'Corrente di spegnimento in carica', unit: 'A', modes: [0, 3] },
+  inStopCurrent:     { label: 'Corrente di spegnimento in carica', unit: 'A', modes: [] },          // il Pro non la legge in Carica né in Ciclo
   inStopVoltage:     { label: 'Target Voltage', unit: 'V', modes: [0, 3] },
   outStopCurrent:    { label: 'Corrente di spegnimento in scarica', unit: 'A', modes: [1] },
   outStopVoltage:    { label: 'Tensione di spegnimento', unit: 'V', modes: [1, 3] },
   inTimeProtect:     { label: 'Timer di spegnimento', unit: 'min', modes: [0, 1, 3] },
-  chargeRestTime:    { label: 'Tempo di pausa di ricarica', unit: 'min', modes: [0, 3] },
+  chargeRestTime:    { label: 'Tempo di pausa di ricarica', unit: 'min', modes: [3] },               // in Carica il Pro non la legge
   dischargeRestTime: { label: 'Scarico a riposo', unit: 'min', modes: [3] },
   detalV:            { label: 'Delta Peak −ΔV', unit: 'mV', modes: [0, 3] },
   cycleMode:         { label: 'Modalità ciclo', unit: '', modes: [3] },
   cycleCount:        { label: 'Numero di cicli', unit: '', modes: [3] },
   truboMode:         { label: 'Modalità attuale', unit: '', modes: [0, 3] },
   tempProtect:       { label: 'Temperatura massima', unit: '°C', modes: [0, 1, 3] },
-  inMaxbostCapacity: { label: 'Capacità massima', unit: 'mAh', modes: [0, 1, 3] }
+  inMaxbostCapacity: { label: 'Capacità massima', unit: 'mAh', modes: [] },                        // solo modalità MaxBoost (non usata dall'app)
+  track:             { label: 'Carica di mantenimento', unit: 'mA', modes: [0] },
+  restartVolt:       { label: 'Tensione di ripartenza', unit: 'V', modes: [0] }
 };
 
 // valore nell'unità mostrata nella pagina: 2500 mA → «2,50 A»
@@ -1228,6 +1230,12 @@ function validateDetailed(p) {
   if (currentModel === 'octa' && p.model === 1 && p.outStopCurrent > 0 &&
       (p.outStopCurrent < 200 || p.outStopCurrent > p.dischargeE)) {
     add('outStopCurrent', 'sull\'Octa 0 oppure tra 0,20 A e ' + fieldTxt('dischargeE', p.dischargeE));
+  }
+  // mantenimento: il caricabatterie riceve la corrente in decine di mA; la ripartenza ha senso sotto la Target Voltage
+  if (p.model === 0 && Number.isFinite(p.track) && p.track % 10 !== 0) add('track', 'usa multipli di 10 mA');
+  if (p.model === 0 && Number.isFinite(p.restartVolt) && p.restartVolt > 0 && p.restartVolt < 1100) add('restartVolt', '0 per spegnerla, oppure tra 1,10 V e 1,50 V');
+  if (p.model === 0 && p.restartVolt > 0 && Number.isFinite(p.inStopVoltage) && p.restartVolt >= p.inStopVoltage) {
+    add('restartVolt', 'deve essere più bassa della Target Voltage (' + fieldTxt('inStopVoltage', p.inStopVoltage) + ')');
   }
   if (p.model === 3 && Number.isFinite(p.outStopVoltage) && p.outStopVoltage >= p.inStopVoltage) {
     add('outStopVoltage', 'deve essere più bassa della Target Voltage (' + fieldTxt('inStopVoltage', p.inStopVoltage) + ')');
@@ -2256,13 +2264,47 @@ function updateStartButton() {
   updateEqButtons();
 }
 
+// Avvio su un'uscita. Se l'uscita risulta «completata» (o ferma con un errore) prima la fermo e poi avvio:
+// l'Octa non accetta un nuovo programma finché lo stato non torna «pronta» (altrimenti bisogna togliere la pila).
+function needsReset(ch) {
+  if (currentModel !== 'octa') return false;          // sul Pro l'avvio funziona già così com'è
+  const s = latest[ch];
+  return !!s && (s.stato === 5 || s.stato === 6 || (s.err > 0 && s.stato < 2));
+}
+function verifyStart(ch) {
+  if (currentModel !== 'octa') return;
+  const sent = (Date.now() - t0) / 1000;
+  setTimeout(() => {
+    const s = latest[ch];
+    if (!s || s.t < sent + 1 || paused[ch] || !isLinked()) return;
+    if (s.stato === 5 || s.stato === 6) {
+      const msg = 'CH' + ch + ': il caricabatterie non ha accettato l\'avvio. Togli e rimetti la pila, poi riprova';
+      addLog(msg); toast(msg, 7000);
+    }
+  }, 7000);
+}
+function startOn(ch, payload, label) {
+  if (!needsReset(ch)) {
+    if (sendSafe(CMD_START, payload, label) === null) return false;
+    verifyStart(ch);
+    return true;
+  }
+  if (sendSafe(CMD_STOP, [slotByte(ch)], '0xFE CH' + ch + ' (azzera prima dell\'avvio)') === null) return false;
+  setTimeout(() => { if (sendSafe(CMD_START, payload, label) !== null) verifyStart(ch); }, 1300);
+  return true;
+}
+
+// Scarica da Programma: capacità 0 = nessun limite, si ferma alla tensione (o corrente) di spegnimento.
+// Il caricabatterie in scarica legge anche la capacità: senza questo userebbe quella della carica (es. 950 mAh).
+function dischargeNoCap(p) { if (p.model === 1) p.capacity = 0; return p; }
+
 function startProgram() {
   if (startBlockers().length) return;
-  const p = readParams();
+  const p = dischargeNoCap(readParams());
   if (!checkProgram(p)) return;
   saveParams();
   const blob = buildSettings(p);
-  if (!sendSafe(CMD_START, Array.from(blob), '0x94 CH' + p.position + ' (programma)')) return;
+  if (!startOn(p.position, Array.from(blob), '0x94 CH' + p.position + ' (programma)')) return;
   planRepeat(p.position, blob);
   addLog('Programma ' + MODE_NAME[p.model] + ' inviato su CH' + p.position + '. Controlla lo schermo del caricabatterie e le letture.');
   $('startHint').textContent = MODE_NAME[p.model] + ' avviata su uscita ' + p.position + '. Controlla lo schermo del caricabatterie.';
@@ -2276,13 +2318,13 @@ function chanRangeTxt() {
 
 function startAll() {
   if (startBlockers().length) return;
-  const p = readParams();
+  const p = dischargeNoCap(readParams());
   if (!checkProgram(p)) return;
   saveParams();
   let failed = 0;
   for (const pos of CHANNELS) {
     const blob = buildSettings(Object.assign({}, p, { position: pos }));
-    if (!sendSafe(CMD_START, Array.from(blob), '0x94 CH' + pos + ' (tutti)')) failed++;
+    if (!startOn(pos, Array.from(blob), '0x94 CH' + pos + ' (tutti)')) failed++;
     else planRepeat(pos, blob);
   }
   addLog(failed ? 'Alcune uscite non sono state inviate: vedi il registro' : 'Programma inviato su ' + chanRangeTxt() + '.');
@@ -2829,9 +2871,22 @@ function renderCellBoard() {
 function raceStart() {
   const rr = raceReasons();
   if (rr.length) {
+    raceStart.prepared = false;
     showStartErrors('race', 'Gara non avviata', rr.map(r => ({ k: '', label: '', msg: r.charAt(0).toUpperCase() + r.slice(1) })));
     return;
   }
+  // uscite «completate»: prima lo stop, poi la gara (l'Octa non riparte senza)
+  const toReset = CHANNELS.filter(ch => $('r_ch' + ch).checked && needsReset(ch));
+  if (toReset.length && !raceStart.prepared) {
+    ensureAudio();
+    for (const ch of toReset) sendSafe(CMD_STOP, [slotByte(ch)], '0xFE CH' + ch + ' (azzera prima della gara)');
+    raceStart.prepared = true;
+    $('btnRaceStart').disabled = true;
+    $('raceStatus').textContent = 'Preparo le uscite…';
+    setTimeout(raceStart, 1300);
+    return;
+  }
+  raceStart.prepared = false;
   hideStartErrors();
   ensureAudio(); // sblocca l'audio del conto alla rovescia nel gesto dell'utente
   const q = raceParams();
@@ -5248,6 +5303,7 @@ function runRepeat(ch) {
     const r2 = repeats[ch];
     if (!r2 || !r2.waiting) return;
     if (!isLinked() || !sendSafe(CMD_START, r2.blob.slice(), '0x94 CH' + ch + ' (ripetizione ' + (r2.done + 1) + '/' + r2.total + ')')) { scheduleRepeat(ch, 10000); return; }
+    verifyStart(Number(ch));
     r2.done++; r2.waiting = false; r2.startedAt = Date.now();
     saveRepeats();
     const msg = 'Ripetizione ' + r2.done + ' di ' + r2.total + ' avviata';
@@ -5958,7 +6014,7 @@ function boxCharge(i, I) {
   if (!p.a && !p.b) { toast('Scrivi prima i nomi delle pile della coppia'); return; }
   const busy = box.pairs.find((q, k) => k !== i && q.state === 'charging' && q.charge && q.charge.chans.some(ch => p.chans.includes(ch)));
   if (busy) { toast('Le uscite ' + p.chans.join(' e ') + ' stanno già caricando ' + busy.name); return; }
-  const base = Object.assign(readParams(), { model: 0, chargeE: Math.round(I * 1000) });
+  const base = Object.assign(readParams(), { model: 0, chargeE: Math.round(I * 1000), track: 0, restartVolt: 0 });   // rabbocco: niente mantenimento
   const errs = validateDetailed(Object.assign({}, base, { position: p.chans[0] }));
   if (errs.length) { toast('Valori della scheda Programma da sistemare: ' + (errs[0].label ? errs[0].label + ' ' : '') + errs[0].msg); return; }
   const names = [p.a, p.b];
@@ -5966,7 +6022,7 @@ function boxCharge(i, I) {
   p.chans.forEach((ch, k) => {
     cancelRepeat(ch);
     const el = $('r_name' + ch); if (el && names[k]) el.value = names[k];
-    if (sendSafe(CMD_START, Array.from(buildSettings(Object.assign({}, base, { position: ch }))), '0x94 CH' + ch + ' (rabbocco ' + p.name + ')')) sent++;
+    if (startOn(ch, Array.from(buildSettings(Object.assign({}, base, { position: ch }))), '0x94 CH' + ch + ' (rabbocco ' + p.name + ')')) sent++;
   });
   saveNames();
   if (!sent) { toast('Carica non inviata: vedi il Registro'); return; }
