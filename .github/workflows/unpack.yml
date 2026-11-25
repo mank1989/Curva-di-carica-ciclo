@@ -1,0 +1,22 @@
+name: Estrai progetto
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  unpack:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Estrai progetto.zip
+        run: |
+          unzip -o progetto.zip
+          rm progetto.zip
+          git config user.name "github-actions"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git commit -m "Progetto APK Android"
+          git push
