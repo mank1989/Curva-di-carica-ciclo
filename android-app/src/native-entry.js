@@ -8,7 +8,7 @@ import { BleClient } from '@capacitor-community/bluetooth-le';
 import { createBluetooth } from './ble-shim.js';
 
 const SITE = 'https://mank1989.github.io/Curva-di-carica-ciclo/';
-const K_HTML = 'nc3000_app_html', K_VER = 'nc3000_app_ver', K_TRIES = 'nc3000_boot_tries', K_BATT = 'nc3000_batt_asked', K_BAD = 'nc3000_app_bad';
+const K_HTML = 'nc3000_app_html', K_VER = 'nc3000_app_ver', K_TRIES = 'nc3000_boot_tries', K_PERMS = 'nc3000_perms_asked_v2', K_BAD = 'nc3000_app_bad';
 
 const KeepAlive = registerPlugin('KeepAlive');
 const ls = {
@@ -16,27 +16,29 @@ const ls = {
   set: (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* ignora */ } },
   del: k => { try { localStorage.removeItem(k); } catch (e) { /* ignora */ } }
 };
-const withTimeout = (p, ms) => Promise.race([Promise.resolve(p), new Promise((_, rej) => setTimeout(() => rej(new Error('nessuna risposta in ' + ms / 1000 + ' s')), ms))]);
 const errTxt = e => String((e && e.message) || e);
 
-// Dati per capire dove si ferma il Bluetooth (compaiono nel riquadro di errore).
-async function diag() {
-  const d = { plugin: String(Capacitor.isPluginAvailable('BluetoothLe')), pagina: window.__nc3000Page || '?' };
-  try { await withTimeout(KeepAlive.stop(), 3000); d.ponte = 'ok'; } catch (e) { d.ponte = errTxt(e); }
-  return d;
-}
-
 // ---------- Bluetooth + servizio in primo piano ----------
+let bt = null;
 function installBluetooth() {
-  const bt = createBluetooth(BleClient, {
+  bt = createBluetooth(BleClient, {
     onConnected: () => {
       KeepAlive.start().catch(() => { /* senza servizio funziona comunque, ma in background può fermarsi */ });
-      if (!ls.get(K_BATT)) { ls.set(K_BATT, '1'); KeepAlive.requestBatteryExemption().catch(() => { /* ignora */ }); }
-    },
-    onDisconnected: () => { KeepAlive.stop().catch(() => { /* ignora */ }); },
-    diag
+      if (!ls.get(K_PERMS)) {                                          // la prima volta: notifiche, poi niente risparmio batteria
+        ls.set(K_PERMS, '1');
+        KeepAlive.requestNotifications().catch(() => { /* ignora */ })
+          .then(() => KeepAlive.requestBatteryExemption()).catch(() => { /* ignora */ });
+      }
+    }
+    // a collegamento perso il servizio resta acceso: la pagina riprova da sola e lo ferma lei (release)
   });
   Object.defineProperty(navigator, 'bluetooth', { value: bt, configurable: true });
+  // ponte usato dalla pagina per notifiche e servizio
+  window.NC3000Native = {
+    alert: (title, text, id, always) => { KeepAlive.alert({ title: String(title), text: String(text), id: id || 200, always: !!always }).catch(() => { /* ignora */ }); },
+    status: (title, text) => { KeepAlive.status({ title: String(title), text: String(text) }).catch(() => { /* ignora */ }); },
+    release: () => { KeepAlive.stop().catch(() => { /* ignora */ }); }
+  };
 }
 
 // ---------- Versioni e aggiornamenti ----------
@@ -53,8 +55,31 @@ async function checkUpdate(currentVer) {
     const html = await fetch(SITE + 'index.html?t=' + Date.now(), { cache: 'no-store' }).then(r => r.ok ? r.text() : '');
     if (!looksOk(html)) return;
     ls.set(K_HTML, html); ls.set(K_VER, String(rv)); ls.set(K_TRIES, '0');
-    window.__nc3000UpdateReady = rv;                                   // si usa alla prossima apertura dell'app
+    showUpdateBanner(rv);                                              // si usa alla prossima apertura dell'app
   } catch (e) { /* senza internet: resta la versione attuale */ }
+}
+
+// Avviso in basso: nuova versione pronta. Se il caricabatterie è collegato non si riavvia nulla.
+function showUpdateBanner(v) {
+  try {
+    const old = document.getElementById('nc3000-upd'); if (old) old.remove();
+    const box = document.createElement('div');
+    box.id = 'nc3000-upd';
+    box.style.cssText = 'position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom));z-index:2147483646;background:#161a22;color:#e8eaed;' +
+      'border:1px solid #f5c542;border-radius:14px;padding:12px 14px;font:15px/1.35 sans-serif;box-shadow:0 6px 24px rgba(0,0,0,.5);display:flex;gap:10px;align-items:center;flex-wrap:wrap';
+    const t = document.createElement('div'); t.style.cssText = 'flex:1 1 180px';
+    const linked = bt && bt.isConnected();
+    t.textContent = 'Nuova versione dell\'app pronta (v' + v + '). ' + (linked ? 'Si attiverà alla prossima apertura.' : 'Riavvia per usarla.');
+    const btn = (label, primary, fn) => {
+      const b = document.createElement('button'); b.textContent = label; b.onclick = fn;
+      b.style.cssText = 'border:0;border-radius:10px;padding:10px 14px;font:600 15px sans-serif;' + (primary ? 'background:#f5c542;color:#000' : 'background:#2a2f3a;color:#e8eaed');
+      return b;
+    };
+    box.append(t);
+    if (!linked) box.append(btn('Riavvia ora', true, () => { if (bt) bt.disconnectAll(); KeepAlive.stop().catch(() => { /* ignora */ }); location.replace('index.html'); }));
+    box.append(btn(linked ? 'OK' : 'Dopo', false, () => box.remove()));
+    document.body.appendChild(box);
+  } catch (e) { /* ignora */ }
 }
 
 function afterStart(ver) {
@@ -82,7 +107,6 @@ async function bootShell() {
   const cached = ls.get(K_HTML), cv = +ls.get(K_VER) || 0, tries = +ls.get(K_TRIES) || 0;
   if (cached && cv > b && tries < 2 && looksOk(cached)) {
     ls.set(K_TRIES, String(tries + 1));                                // se non parte due volte di fila si torna a quella dell'APK
-    window.__nc3000Page = 'scaricata v' + cv;
     installBluetooth();
     swapDocument(cached);
     afterStart(cv);
@@ -96,7 +120,6 @@ async function bootShell() {
 }
 
 async function bootApp() {
-  window.__nc3000Page = 'apk';
   installBluetooth();                                                  // subito: la pagina non è ancora partita
   afterStart(await bundledVer());
 }

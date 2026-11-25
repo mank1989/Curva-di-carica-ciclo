@@ -17,6 +17,9 @@ const toDV = v => {
 };
 
 
+const LAST_KEY = 'nc3000_ble_last';
+const lastDevice = () => { try { return JSON.parse(localStorage.getItem(LAST_KEY) || 'null'); } catch (e) { return null; } };
+
 // Messaggio ben visibile (la scritta in alto è troppo corta per leggere gli errori).
 function showMsg(text) {
   try {
@@ -47,7 +50,7 @@ function pickDevice(Ble, req) {
     const cancel = doc.createElement('button'); cancel.textContent = 'Annulla';
     cancel.style.cssText = 'margin-top:12px;width:100%;padding:12px;border-radius:10px;border:0;background:#2a2f3a;color:#e8eaed;font-size:16px';
     box.append(h, st, list, cancel); ov.append(box); doc.body.appendChild(ov);
-    const seen = new Map();
+    const seen = new Map(), last = lastDevice();
     let done = false, timer = null;
     const finish = (fn, v) => {
       if (done) return; done = true; clearTimeout(timer);
@@ -59,7 +62,7 @@ function pickDevice(Ble, req) {
       const items = [...seen.values()].sort((a, b) => (!!b.name - !!a.name) || ((b.rssi || -999) - (a.rssi || -999)));
       for (const d of items) {
         const b = doc.createElement('button');
-        b.textContent = (d.name || 'senza nome') + '  ·  ' + (d.rssi != null ? d.rssi + ' dBm' : '');
+        b.textContent = (d.name || 'senza nome') + '  ·  ' + (d.rssi != null ? d.rssi + ' dBm' : '') + (last && last.id === d.id ? '  ·  ultimo usato' : '');
         b.style.cssText = 'display:block;width:100%;text-align:left;margin:6px 0;padding:12px;border-radius:10px;border:1px solid #333a47;background:#1d222c;color:#e8eaed;font-size:16px';
         b.onclick = () => finish(resolve, { deviceId: d.id, name: d.name });
         list.appendChild(b);
@@ -131,12 +134,14 @@ export function createBluetooth(Ble, hooks = {}) {
     constructor(dev) { this._dev = dev; this.connected = false; this._services = []; this.device = dev; }
     async connect() {
       await init();
-      await Ble.connect(this._dev.id, () => this._dropped(), { timeout: 15000 });
+      try { await Ble.connect(this._dev.id, () => this._dropped(), { timeout: 15000 }); }
+      catch (e) { try { await Ble.disconnect(this._dev.id); } catch (e2) { /* ignora */ } throw e; }
       let raw;
       try { raw = await Ble.getServices(this._dev.id); }
       catch (e) { try { await Ble.disconnect(this._dev.id); } catch (e2) { /* ignora */ } throw e; }
       this._services = raw.map(s => new Service(this._dev, s));
       this.connected = true;
+      try { localStorage.setItem(LAST_KEY, JSON.stringify({ id: this._dev.id, name: this._dev.name })); } catch (e) { /* ignora */ }
       if (Ble.requestConnectionPriority) { try { await Ble.requestConnectionPriority(this._dev.id, 1); } catch (e) { /* non su tutti i telefoni */ } }
       if (hooks.onConnected) { try { hooks.onConnected(this._dev); } catch (e) { /* ignora */ } }
       return this;
@@ -167,13 +172,17 @@ export function createBluetooth(Ble, hooks = {}) {
 
   return {
     async getAvailability() { return true; },
+    async getDevices() {
+      const l = lastDevice();
+      if (!l || !l.id) return [];
+      let dev = devices.get(l.id);
+      if (!dev) { dev = new Device(l.id, l.name); devices.set(l.id, dev); }
+      return [dev];
+    },
+    disconnectAll() { for (const d of devices.values()) if (d.gatt.connected) d.gatt.disconnect(); },
+    isConnected() { for (const d of devices.values()) if (d.gatt.connected) return true; return false; },
     async requestDevice(options = {}) {
-      try { await init(); } catch (e) {
-        let d = {};
-        try { if (hooks.diag) d = await hooks.diag(); } catch (e2) { /* ignora */ }
-        showMsg('Bluetooth: ' + ((e && e.message) || JSON.stringify(e)) + '\n\nDiagnostica: ' + JSON.stringify(d));
-        throw e;
-      }
+      try { await init(); } catch (e) { showMsg('Bluetooth: ' + ((e && e.message) || JSON.stringify(e))); throw e; }
       const req = { optionalServices: (options.optionalServices || []).map(norm) };
       const f = options.filters && options.filters[0];
       if (f) {

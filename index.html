@@ -1753,6 +1753,11 @@ function onDisconnect() {
   $('status').textContent = 'Disconnesso: ' + rxOk + ' risposte valide';
   setConnected(false);
   fwLinkLost();
+  if (!userDisc && device) {
+    $('status').textContent = 'Connessione persa: riprovo tra poco…';
+    addLog('Connessione persa: provo a ricollegarmi da solo');
+    scheduleReconnect();
+  }
 }
 
 // vero solo se il caricabatterie risulta collegato davvero
@@ -1784,6 +1789,7 @@ function setConnected(on) {
 
 async function connect() {
   ensureAudio();
+  cancelReconnect();
   if (!window.isSecureContext || !navigator.bluetooth) {
     $('status').textContent = 'Serve Chrome su HTTPS (es. GitHub Pages)';
     return;
@@ -1791,13 +1797,22 @@ async function connect() {
   try {
     $('status').textContent = 'Scelta dispositivo…';
     // niente filtro sul nome: alcuni modelli (es. NC3000 Octa) hanno un nome diverso dal prefisso "#Charger"
-    device = await navigator.bluetooth.requestDevice({
+    const d = await navigator.bluetooth.requestDevice({
       acceptAllDevices: true, optionalServices: [SVC]
     });
+    addLog('Dispositivo scelto: ' + (d.name || 'senza nome') + ' · ' + d.id);
+    await linkDevice(d, false);
+  } catch (e) {
+    connectError(e);
+  }
+}
+
+// collega il caricatore. again = lo stesso dopo una caduta: letture e grafico restano
+async function linkDevice(d, again) {
+    device = d;
     device.removeEventListener('gattserverdisconnected', onDisconnect); // evita listener doppi se si riconnette lo stesso dispositivo
     device.addEventListener('gattserverdisconnected', onDisconnect);
-    addLog('Dispositivo scelto: ' + (device.name || 'senza nome') + ' · ' + device.id);
-    $('status').textContent = 'Connessione a ' + (device.name || 'dispositivo') + '…';
+    $('status').textContent = (again ? 'Ricollegamento a ' : 'Connessione a ') + (device.name || 'dispositivo') + '…';
     const server = await device.gatt.connect();
     // elenca i servizi trovati, così se il dispositivo non è compatibile lo sappiamo subito
     const services = await server.getPrimaryServices();
@@ -1810,20 +1825,30 @@ async function connect() {
     char = await svc.getCharacteristic(CHR);
     useWnR = !!char.properties.writeWithoutResponse;
     if (!useWnR && !char.properties.write) throw new Error('caratteristica non scrivibile');
-    rxBuf = []; samples = []; latest = {}; histData = {}; lastHistoryDump = null; tempSeen = false; temp10 = {}; temp10Seen = false; endInfo = {}; eqState = {}; eqSeen = false; eqInfo = {}; eqSamples = []; eqPulseSeen = false;
+    rxBuf = [];
     clearTimeout(autoHistTimer);
-    txCount = 0; rxOk = 0; rxBad = 0; logLines = [];
-    t0 = Date.now();
-    $('tx').textContent = 0; $('rxok').textContent = 0; $('rxbad').textContent = 0;
+    if (!again) {
+      samples = []; latest = {}; histData = {}; lastHistoryDump = null; tempSeen = false; temp10 = {}; temp10Seen = false; endInfo = {}; eqState = {}; eqSeen = false; eqInfo = {}; eqSamples = []; eqPulseSeen = false;
+      for (const k in prevStato) delete prevStato[k];
+      txCount = 0; rxOk = 0; rxBad = 0; logLines = [];
+      t0 = Date.now();
+      $('tx').textContent = 0; $('rxok').textContent = 0; $('rxbad').textContent = 0;
+    }
     renderLatest(); drawAll();
+    char.removeEventListener('characteristicvaluechanged', onData);
     char.addEventListener('characteristicvaluechanged', onData);
     await char.startNotifications();
-    $('status').textContent = 'Connesso a ' + (device.name || 'dispositivo');
-    addLog('Connesso. Notifiche attive.');
+    $('status').textContent = (again ? 'Ricollegato a ' : 'Connesso a ') + (device.name || 'dispositivo');
+    addLog(again ? 'Ricollegato. Notifiche attive.' : 'Connesso. Notifiche attive.');
+    userDisc = false;
+    rememberDevice(device);
     setConnected(true);
     setTimeout(startDetection, 300); // rileva il modello e imposta i canali da solo
-  } catch (e) {
-    const msg = e.message || '';
+}
+
+function connectError(e) {
+    if (!isLinked()) nativeCall('release');
+    const msg = (e && e.message) || '';
     if (/cancel/i.test(msg)) {
       $('status').textContent = 'Nessun caricabatterie scelto: riprova e tocca l\'Octa nella lista.';
     } else if (/no devices|not found|nessun/i.test(msg)) {
@@ -1832,10 +1857,103 @@ async function connect() {
       $('status').textContent = 'Errore: ' + msg +
         (/GATT|connect|network|disconnected/i.test(msg) ? ' · Chiudi l\'app SkyRC ufficiale, accendi il caricabatterie e riprova' : '');
     }
-  }
 }
 
+// ---------- Ricollegamento automatico ----------
+// Se il collegamento cade da solo (non con «Disconnetti») si riprova per 30 minuti: prima ogni 5 s, poi ogni 20 s.
+// All'apertura ci si collega da soli all'ultimo caricabatterie, se il browser/l'app lo permette.
+const LAST_DEV_KEY = 'nc3000_last_device';
+const RECONNECT_MAX_MS = 30 * 60 * 1000;
+let userDisc = false, reconn = null;
+function rememberDevice(d) {
+  try { localStorage.setItem(LAST_DEV_KEY, JSON.stringify({ id: d.id, name: d.name || '' })); } catch (e) { /* ignora */ }
+}
+function cancelReconnect() {
+  if (reconn) { clearTimeout(reconn.timer); reconn = null; }
+}
+function scheduleReconnect() {
+  if (!device || userDisc || fw.busy || fw.open || fw.session === 'pending' || fw.session === 'done') return;
+  if (!reconn) reconn = { tries: 0, since: Date.now(), timer: null };
+  clearTimeout(reconn.timer);
+  if (Date.now() - reconn.since > RECONNECT_MAX_MS) {
+    reconn = null;
+    $('status').textContent = 'Connessione persa: tocca Connetti per riprovare';
+    addLog('Ricollegamento: nessuna risposta per 30 minuti, smetto di provare');
+    nativeCall('alert', 'NC3000 · connessione persa', (device.name || 'Il caricabatterie') + ' non risponde da 30 minuti', 210);
+    nativeCall('release');
+    return;
+  }
+  reconn.timer = setTimeout(tryReconnect, reconn.tries < 6 ? 5000 : 20000);
+}
+async function tryReconnect() {
+  if (!reconn || isLinked()) return;
+  const r = reconn;
+  r.tries++;
+  $('status').textContent = 'Connessione persa: riprovo (' + r.tries + ')…';
+  nativeCall('status', 'NC3000 · connessione persa', 'Riprovo a collegarmi (' + r.tries + ')…');
+  try {
+    await linkDevice(device, true);
+    addLog('Ricollegato dopo ' + Math.round((Date.now() - r.since) / 1000) + ' s');
+    if (reconn === r) reconn = null;
+  } catch (e) {
+    addLog('Ricollegamento non riuscito: ' + ((e && e.message) || e));
+    try { if (device && device.gatt && device.gatt.connected && !char) device.gatt.disconnect(); } catch (e2) { /* ignora */ }
+    if (reconn === r) scheduleReconnect();
+  }
+}
+async function autoConnectAtStart() {
+  if (!navigator.bluetooth || typeof navigator.bluetooth.getDevices !== 'function' || isLinked() || device) return;
+  let last = null;
+  try { last = JSON.parse(localStorage.getItem(LAST_DEV_KEY) || 'null'); } catch (e) { /* ignora */ }
+  if (!last || !last.id) return;
+  let list = [];
+  try { list = await navigator.bluetooth.getDevices(); } catch (e) { return; }
+  const d = list.find(x => x.id === last.id);
+  if (!d || isLinked() || device) return;
+  try {
+    await linkDevice(d, false);
+  } catch (e) {
+    addLog('Collegamento automatico non riuscito: ' + ((e && e.message) || e));
+    try { if (d.gatt && d.gatt.connected) d.gatt.disconnect(); } catch (e2) { /* ignora */ }
+    if (device === d && !isLinked()) device = null;
+    nativeCall('release');
+    $('status').textContent = (last.name || 'Ultimo caricabatterie') + ' non trovato: accendilo e tocca Connetti';
+  }
+}
+setTimeout(autoConnectAtStart, 2500);   // dopo il logo d'avvio
+
+// ---------- Avvisi sul telefono (solo app Android: window.NC3000Native) ----------
+function nativeCall(fn, ...args) {
+  try { const n = window.NC3000Native; if (n && typeof n[fn] === 'function') n[fn](...args); } catch (e) { /* ignora */ }
+}
+// fine programma di un'uscita: lo stato passa da carica/scarica/riposo a completato
+const prevStato = {};
+function checkCycleEnd(s) {
+  const p = prevStato[s.ch];
+  prevStato[s.ch] = s.stato;
+  if (p === undefined || !(p === 2 || p === 3 || p === 4) || !(s.stato === 5 || s.stato === 6)) return;
+  const modo = (MODE_LABEL[s.modo] || 'programma').toLowerCase();
+  const txt = 'Fine ' + modo + ' · ' + s.cap + ' mAh · ' + (s.mV / 1000).toFixed(3).replace('.', ',') + ' V';
+  addLog('CH' + s.ch + ': ' + txt);
+  playNotify('end');
+  nativeCall('alert', 'NC3000 · CH' + s.ch, txt, 100 + s.ch, true);
+}
+// testo della notifica fissa dell'app: stato delle uscite ogni 5 s
+setInterval(() => {
+  if (!window.NC3000Native || !isLinked()) return;
+  const lines = [];
+  for (const ch of CHANNELS) {
+    const s = latest[ch];
+    if (!s || s.stato === 0) continue;
+    lines.push('CH' + ch + ' ' + (STATO_LABEL[s.stato] || 'stato ' + s.stato) + ' · ' + (s.mV / 1000).toFixed(3).replace('.', ',') + ' V · ' +
+               s.cap + ' mAh' + (s.err ? ' · ' + errText(s.err) : ''));
+  }
+  nativeCall('status', (device && device.name ? device.name : 'NC3000') + ' collegato', lines.join('\n') || 'In attesa delle letture');
+}, 5000);
+
 async function disconnect() {
+  userDisc = true;
+  cancelReconnect();
   // gara in corso: prima ferma le uscite, poi chiudi la connessione
   if (race) { addLog('Gara interrotta dall\'utente: fermo le uscite'); raceAbort(); }
   stopPolling();
@@ -1852,6 +1970,7 @@ async function disconnect() {
   if (device && device.gatt && device.gatt.connected) device.gatt.disconnect();
   $('status').textContent = 'Disconnesso: ' + rxOk + ' risposte valide';
   setConnected(false);
+  nativeCall('release');
 }
 
 // ---------- Avvio: niente anteprima né conferma, i valori si controllano quando premi «Avvia» ----------
@@ -2851,10 +2970,12 @@ function showAlarm(msg) {
   clearTimeout(showAlarm.timer);
   showAlarm.timer = setTimeout(() => { b.style.display = 'none'; }, 12000);
   playNotify('warn');
+  nativeCall('alert', 'NC3000 · avviso', msg, 200);
 }
 
 // controlla ogni lettura: temperatura sempre, tensione minima solo durante la gara
 function checkAlarms(s) {
+  checkCycleEnd(s);
   const rLimit = Number($('a_temp').value);
   const vLimit = Number($('a_vmin').value);
   const now = Date.now();
@@ -3158,7 +3279,7 @@ $('btnCapClear').onclick = capClear;
 $('hz_name').addEventListener('change', renderHistoryCells);
 $('btnReportLast').onclick = reportLast;
 $('btnReportHist').onclick = reportHist;
-$('btnAlarmTest').onclick = () => { ensureAudio(); showAlarm('Prova avviso'); };
+$('btnAlarmTest').onclick = () => { ensureAudio(); showAlarm('Prova avviso'); nativeCall('alert', 'NC3000 · prova', 'Le notifiche dell\'app funzionano', 299, true); };
 ['a_temp', 'a_vmin', 'a_mode'].forEach(id => {
   $(id).addEventListener('change', () => { saveAlarmCfg(); });
   $(id).addEventListener('input', () => { saveAlarmCfg(); });

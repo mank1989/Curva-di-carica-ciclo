@@ -28,6 +28,23 @@ x = x.replace(/<\/application>/, '    <service android:name=".KeepAliveService" 
   '    <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />\n' + add + '\n');
 fs.writeFileSync(mf, x);
 
+// Icona e schermata d'avvio col logo (file in res-icon/)
+const res = path.join(app, 'res');
+const BG = '#FF050505';
+for (const d of fs.readdirSync(res)) {                                 // via la schermata bianca predefinita
+  if (!d.startsWith('drawable')) continue;
+  for (const f of fs.readdirSync(path.join(res, d))) if (f.startsWith('splash.')) fs.rmSync(path.join(res, d, f));
+}
+fs.cpSync(path.resolve('res-icon'), res, { recursive: true, force: true });
+let colorSet = false;                                                  // colore di fondo dell'icona: dove c'è già, altrimenti file nuovo
+const vals = path.join(res, 'values');
+for (const f of fs.readdirSync(vals)) {
+  const fp = path.join(vals, f), t = fs.readFileSync(fp, 'utf8');
+  const t2 = t.replace(/(<color\s+name="ic_launcher_background"\s*>)[^<]*(<\/color>)/, '$1' + BG + '$2');
+  if (t2 !== t) { fs.writeFileSync(fp, t2); colorSet = true; }
+}
+if (!colorSet) fs.writeFileSync(path.join(vals, 'ic_launcher_background.xml'), '<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <color name="ic_launcher_background">' + BG + '</color>\n</resources>\n');
+
 const gradle = path.resolve('android/app/build.gradle');
 let g = fs.readFileSync(gradle, 'utf8');
 const run = process.env.GITHUB_RUN_NUMBER || '1';
