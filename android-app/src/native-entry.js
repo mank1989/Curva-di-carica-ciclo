@@ -37,7 +37,10 @@ function installBluetooth() {
   window.NC3000Native = {
     alert: (title, text, id, always) => { KeepAlive.alert({ title: String(title), text: String(text), id: id || 200, always: !!always }).catch(() => { /* ignora */ }); },
     status: (title, text) => { KeepAlive.status({ title: String(title), text: String(text) }).catch(() => { /* ignora */ }); },
-    release: () => { KeepAlive.stop().catch(() => { /* ignora */ }); }
+    release: () => { KeepAlive.stop().catch(() => { /* ignora */ }); },
+    saveFile: (name, text, mime) => KeepAlive.saveFile({ name: String(name), data: String(text), mime: mime || 'application/octet-stream' }).then(r => r.path),
+    scanQr: () => KeepAlive.scanQr().then(r => r.value),
+    speak: text => { KeepAlive.speak({ text: String(text) }).catch(() => { /* ignora */ }); }
   };
 }
 

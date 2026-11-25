@@ -24,7 +24,8 @@ const perms = [
 const add = perms.map(p => '    ' + p).join('\n');
 if (!/xmlns:tools=/.test(x)) x = x.replace(/<manifest\b/, '<manifest xmlns:tools="http://schemas.android.com/tools"');
 if (!/<\/application>/.test(x)) throw new Error('AndroidManifest.xml inatteso');
-x = x.replace(/<\/application>/, '    <service android:name=".KeepAliveService" android:exported="false" android:foregroundServiceType="connectedDevice" />\n    </application>\n' +
+x = x.replace(/<\/application>/, '    <service android:name=".KeepAliveService" android:exported="false" android:foregroundServiceType="connectedDevice" />\n' +
+  '        <meta-data android:name="com.google.mlkit.vision.DEPENDENCIES" android:value="barcode_ui" />\n    </application>\n' +
   '    <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />\n' + add + '\n');
 fs.writeFileSync(mf, x);
 
@@ -47,6 +48,11 @@ if (!colorSet) fs.writeFileSync(path.join(vals, 'ic_launcher_background.xml'), '
 
 const gradle = path.resolve('android/app/build.gradle');
 let g = fs.readFileSync(gradle, 'utf8');
+if (!g.includes('play-services-code-scanner')) {                     // lettore QR di Google (etichette delle pile)
+  const gd = g.replace(/\ndependencies\s*\{/, m => m + "\n    implementation 'com.google.android.gms:play-services-code-scanner:16.1.0'");
+  if (gd === g) throw new Error('build.gradle: blocco dependencies non trovato');
+  g = gd;
+}
 const run = process.env.GITHUB_RUN_NUMBER || '1';
 const g2 = g.replace(/versionCode\s+\d+/, 'versionCode ' + run).replace(/versionName\s+"[^"]*"/, 'versionName "1.' + run + '"');
 if (g2 === g) console.warn('ATTENZIONE: versionCode non trovato in build.gradle, gli aggiornamenti potrebbero non installarsi sopra');
