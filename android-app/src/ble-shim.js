@@ -16,9 +16,58 @@ const toDV = v => {
   return new DataView(u8.slice().buffer);
 };
 
+
+// Elenco dispositivi disegnato dalla pagina stessa (non dipende dalla finestra nativa del plugin).
+function pickDevice(Ble, req) {
+  return new Promise((resolve, reject) => {
+    const doc = document;
+    const ov = doc.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;font-family:sans-serif';
+    const box = doc.createElement('div');
+    box.style.cssText = 'width:min(92vw,420px);max-height:80vh;overflow:auto;background:#161a22;color:#e8eaed;border-radius:16px;padding:18px;box-sizing:border-box';
+    const h = doc.createElement('div'); h.textContent = 'Scegli il caricabatterie'; h.style.cssText = 'font-size:18px;font-weight:700;margin-bottom:6px';
+    const st = doc.createElement('div'); st.textContent = 'Ricerca in corso…'; st.style.cssText = 'font-size:14px;color:#9aa0a6;margin-bottom:10px';
+    const list = doc.createElement('div');
+    const cancel = doc.createElement('button'); cancel.textContent = 'Annulla';
+    cancel.style.cssText = 'margin-top:12px;width:100%;padding:12px;border-radius:10px;border:0;background:#2a2f3a;color:#e8eaed;font-size:16px';
+    box.append(h, st, list, cancel); ov.append(box); doc.body.appendChild(ov);
+    const seen = new Map();
+    let done = false, timer = null;
+    const finish = (fn, v) => {
+      if (done) return; done = true; clearTimeout(timer);
+      try { Promise.resolve(Ble.stopLEScan()).catch(() => { /* ignora */ }); } catch (e) { /* ignora */ }
+      ov.remove(); fn(v);
+    };
+    const redraw = () => {
+      list.textContent = '';
+      const items = [...seen.values()].sort((a, b) => (!!b.name - !!a.name) || ((b.rssi || -999) - (a.rssi || -999)));
+      for (const d of items) {
+        const b = doc.createElement('button');
+        b.textContent = (d.name || 'senza nome') + '  ·  ' + (d.rssi != null ? d.rssi + ' dBm' : '');
+        b.style.cssText = 'display:block;width:100%;text-align:left;margin:6px 0;padding:12px;border-radius:10px;border:1px solid #333a47;background:#1d222c;color:#e8eaed;font-size:16px';
+        b.onclick = () => finish(resolve, { deviceId: d.id, name: d.name });
+        list.appendChild(b);
+      }
+      if (items.length) st.textContent = 'Tocca il tuo caricabatterie (NC3000 / Charger)';
+    };
+    cancel.onclick = () => finish(reject, new Error('cancel'));
+    timer = setTimeout(() => { if (!seen.size) st.textContent = 'Nessun dispositivo trovato: accendi il caricabatterie, chiudi l\'app SkyRC e riprova.'; }, 10000);
+    const scanReq = { allowDuplicates: false };
+    if (req.services) scanReq.services = req.services;
+    Promise.resolve(Ble.requestLEScan(scanReq, r => {
+      const d = r && r.device; if (!d || !d.deviceId) return;
+      seen.set(d.deviceId, { id: d.deviceId, name: d.name || r.localName || '', rssi: r.rssi });
+      redraw();
+    })).catch(e => { st.textContent = 'Errore ricerca: ' + ((e && e.message) || e); });
+  });
+}
+
 export function createBluetooth(Ble, hooks = {}) {
   let initP = null;
-  const init = () => initP || (initP = Ble.initialize({ androidNeverForLocation: true }).catch(e => { initP = null; throw e; }));
+  const init = () => initP || (initP = Promise.race([
+    Ble.initialize({ androidNeverForLocation: true }),
+    new Promise((_, rej) => setTimeout(() => rej(new Error('Bluetooth non pronto: controlla i permessi «Dispositivi nelle vicinanze» e che il Bluetooth sia acceso')), 20000))
+  ]).catch(e => { initP = null; throw e; }));
   const devices = new Map();
 
   class Characteristic extends EventTarget {
@@ -111,7 +160,7 @@ export function createBluetooth(Ble, hooks = {}) {
         if (f.name) req.name = f.name;
         if (f.namePrefix) req.namePrefix = f.namePrefix;
       }
-      const d = await Ble.requestDevice(req);
+      const d = (typeof Ble.requestLEScan === 'function' && typeof document !== 'undefined') ? await pickDevice(Ble, req) : await Ble.requestDevice(req);
       let dev = devices.get(d.deviceId);
       if (!dev) { dev = new Device(d.deviceId, d.name); devices.set(d.deviceId, dev); }
       else if (d.name) dev.name = d.name;
