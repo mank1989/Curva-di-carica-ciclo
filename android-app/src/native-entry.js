@@ -63,7 +63,8 @@ async function start() {
   installBluetooth();
   const page = await pickPage();
   const ok = '<script>setTimeout(function(){try{localStorage.setItem("' + K_TRIES + '","0")}catch(e){}},8000)</script>';
-  const html = /<\/body>/i.test(page.html) ? page.html.replace(/<\/body>/i, () => ok + '</body>') : page.html + ok;
+    const at = page.html.lastIndexOf('</body>');
+  const html = at >= 0 ? page.html.slice(0, at) + ok + page.html.slice(at) : page.html + ok;
   document.open(); document.write(html); document.close();
   setTimeout(() => checkUpdate(page.ver), 4000);
 }
