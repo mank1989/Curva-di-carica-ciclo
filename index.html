@@ -746,6 +746,7 @@ const CHR = '0000ffe1-0000-1000-8000-00805f9b34fb';
 const CMD_HEARTBEAT = 0xEE, CMD_NC_DATA = 0x91, CMD_START = 0x94, CMD_STOP = 0xFE;
 const CMD_INFO = 0x57;
 const CMD_STATUS_OCTA = 0x9A; // stato di tutti gli slot (Octa), sola lettura // richiesta di informazioni (sola lettura), come Cmd.getDeviceInfo dell'app ufficiale
+const CMD_TEMP10 = 0xC7;     // firmware BANNED v10+: temperatura dei 4 canali in decimi di grado (0F 03 C7 00 C7)
 const CMD_HISTORY = 0x98;     // storico della curva di un'uscita (sola lettura), come Cmd.queryHistoryData dell'app ufficiale
 const MASK_OF_POS = { 1: 1, 2: 2, 3: 4, 4: 8, 5: 16, 6: 32, 7: 64, 8: 128 };
 const POS_OF_MASK = { 1: 1, 2: 2, 4: 3, 8: 4, 16: 5, 32: 6, 64: 7, 128: 8 };
@@ -825,6 +826,47 @@ const MODE_NAME = { 0: 'Carica', 1: 'Scarica', 3: 'Ciclo' };
 const FW_KEY = 'nc3000_fw_v1';
 let proFirmware = (() => { try { return localStorage.getItem(FW_KEY) === 'mod' ? 'mod' : 'orig'; } catch (e) { return 'orig'; } })();
 let tempSeen = false;       // il caricatore manda la temperatura dei canali (byte 8 del pacchetto 0x91)
+let temp10 = {};            // canale -> { c: °C con un decimale, t: secondi } dall'ultima risposta 0xC7
+let temp10Seen = false;     // il firmware risponde al comando 0xC7 (decimi di grado)
+let endInfo = {};           // canale -> { reason, drop } motivo dell'ultima fine carica (0xC7 versione 2, firmware v11+)
+const END_REASON_TEXT = { 1: '−ΔV', 2: 'calo prolungato dopo il picco', 3: 'tensione ferma per alcuni minuti', 4: 'tensione massima' };
+function endText(e) { return END_REASON_TEXT[e.reason] + (e.drop ? ' (calo ' + e.drop + ' mV dal picco)' : ''); }
+const TEMP10_FRESH_S = 3;   // una lettura 0xC7 vale per i pacchetti 0x91 dei 3 secondi successivi
+
+// temperatura di una lettura 0x91: i decimi da 0xC7 se recenti, altrimenti i gradi interi del byte 8
+function tempFor(ch, t, byte8) {
+  const d = temp10[ch];
+  if (d && t - d.t <= TEMP10_FRESH_S) return d.c;
+  return byte8 || null;
+}
+// gradi da mostrare: un decimale quando arrivano i decimi, interi altrimenti
+function fmtTemp(c) { return temp10Seen ? c.toFixed(1).replace('.', ',') : String(Math.round(c)); }
+
+// risposta 0xC7: 0F 0C C7 0F T1h T1l T2h T2l T3h T3l T4h T4l 01 somma  (Tn = °C × 10, FFFF = non valida)
+// versione 2 (firmware v11+): 0F 14 C7 0F T1..T4 02 R1..R4 D1..D4 somma  (Rn motivo fine carica, Dn calo dal picco in mV)
+function handleTemp10Frame(f, t) {
+  const v2 = f.length === 22 && f[1] === 20 && f[12] === 2;
+  if (!v2 && (f.length !== 14 || f[1] !== 12) || f[3] !== 0x0F) {
+    addLog(t.toFixed(1).padStart(8) + ' s  RX temperatura non riconosciuta ' + hex(f));
+    return;
+  }
+  const parts = [];
+  for (let ch = 1; ch <= 4; ch++) {
+    const v = (f[2 + 2 * ch] << 8) | f[3 + 2 * ch];
+    if (v === 0xFFFF) { parts.push('CH' + ch + ' —'); continue; }
+    temp10[ch] = { c: v / 10, t };
+    parts.push('CH' + ch + ' ' + (v / 10).toFixed(1) + ' °C');
+  }
+  if (v2) for (let ch = 1; ch <= 4; ch++) {
+    const reason = f[12 + ch], drop = f[16 + ch];
+    const prev = endInfo[ch];
+    endInfo[ch] = { reason, drop };
+    if (reason && END_REASON_TEXT[reason] && (!prev || prev.reason !== reason)) addLog('CH' + ch + ' fine carica: ' + endText(endInfo[ch]));
+  }
+  if (!temp10Seen) { temp10Seen = true; addLog('Il firmware manda la temperatura con un decimale (0xC7)'); }
+  tempSeen = true;
+  addLog(t.toFixed(1).padStart(8) + ' s  temperatura  ' + parts.join('  '));
+}
 
 // Massimi per modello e firmware: Pro originale 2,5 A e 3 cicli, Pro modificato 2,8 A e 10 cicli, Octa 2,5 A
 function maxDischargeMa() { return currentModel === 'octa' ? 2500 : (proFirmware === 'mod' ? 2800 : 2500); }
@@ -1118,6 +1160,7 @@ function handleFrame(f) {
   }
   if (f[2] === CMD_HISTORY) { handleHistoryFrame(f); return; }
   if (f[2] === CMD_INFO) { lateInfo(f); return; }
+  if (f[2] === CMD_TEMP10) { handleTemp10Frame(f, t); return; }
   if (f[2] !== CMD_NC_DATA) {
     addLog(t.toFixed(1).padStart(8) + ' s  RX risposta comando ' + f[2].toString(16) + '  ' + hex(f));
     return;
@@ -1136,7 +1179,7 @@ function handleFrame(f) {
     ir: be(16),                                                  // resistenza interna, mΩ
     cap: be(10),                                                 // capacità della fase, mAh
     dV: f[9],                                                    // −ΔV in mV (byte 9; il firmware manda un solo byte)
-    tempC: f[8] || null,                                         // byte 8: °C del canale se il firmware lo manda (originale e v7: sempre 0)
+    tempC: tempFor(ch, t, f[8]),                                 // decimi da 0xC7, altrimenti byte 8 in °C (originale: sempre 0)
     counter: ((f[12] << 24) >>> 0) + (f[13] << 16) + (f[14] << 8) + f[15], // tempo, s
     stato: f[18],                                                // 2 carica, 3 scarica, 4 riposo, 5/6 completato
     modo: f[19],                                                 // 0 carica, 1 scarica, 3 ciclo, 4 MaxBoost, 5 turbo
@@ -1556,7 +1599,7 @@ function drawAll() {
   // temperatura dei canali: compare solo se il firmware la manda (byte 8)
   const box = $('chartTempBox');
   if (box) box.style.display = tempSeen ? '' : 'none';
-  if (tempSeen) drawChart('chartTemp', seriesOf('T'), v => v.toFixed(0) + ' °C');
+  if (tempSeen) drawChart('chartTemp', seriesOf('T'), v => v.toFixed(temp10Seen ? 1 : 0).replace('.', ',') + ' °C');
 }
 
 function startPolling() {
@@ -1573,6 +1616,8 @@ function startPolling() {
   pollTimer = setInterval(() => {
     try { enqueue(CMD_NC_DATA, [[1, 2, 4, 8][maskIdx]], '0x91'); } catch (e) { addLog(e.message); }
     maskIdx = (maskIdx + 1) % 4;
+    // temperatura in decimi (firmware BANNED v10+): una volta al secondo; l'originale la ignora
+    if (maskIdx === 0) { try { enqueue(CMD_TEMP10, [0x00], '0xC7'); } catch (e) { addLog(e.message); } }
   }, 250);
   beatTimer = setInterval(() => {
     try { enqueue(CMD_HEARTBEAT, [0x00], '0xEE'); } catch (e) { addLog(e.message); }
@@ -1661,7 +1706,7 @@ async function connect() {
     char = await svc.getCharacteristic(CHR);
     useWnR = !!char.properties.writeWithoutResponse;
     if (!useWnR && !char.properties.write) throw new Error('caratteristica non scrivibile');
-    rxBuf = []; samples = []; latest = {}; histData = {}; lastHistoryDump = null; tempSeen = false;
+    rxBuf = []; samples = []; latest = {}; histData = {}; lastHistoryDump = null; tempSeen = false; temp10 = {}; temp10Seen = false; endInfo = {};
     clearTimeout(autoHistTimer);
     txCount = 0; rxOk = 0; rxBad = 0; logLines = [];
     t0 = Date.now();
@@ -2377,6 +2422,9 @@ function raceStart() {
       sendSafe(CMD_STATUS_OCTA, [0x00], '0x9A gara');   // l'Octa dà tutti gli slot in una sola risposta
     } else {
       const masks = race.chans.map(c => MASK_OF_POS[c]);
+      race.tick = (race.tick || 0) + 1;
+      // temperatura in decimi circa una volta al secondo, senza saltare il turno di nessuna uscita
+      if (race.tick % 8 === 0) { sendSafe(CMD_TEMP10, [0x00], '0xC7 gara'); return; }
       sendSafe(CMD_NC_DATA, [masks[race.pollIdx % masks.length]], '0x91 gara');
     }
     race.pollIdx++;
@@ -3025,9 +3073,10 @@ function renderLatest() {
         '<div><b>' + s.cap + ' mAh</b><small>capacità</small></div>' +
         '<div' + (s.ir > rLimit ? ' class="hot"' : '') + '><b>' + (s.ir > 0 ? s.ir + ' mΩ' : '—') + '</b><small>resistenza</small></div>' +
         '<div><b>' + (s.dV > 0 ? s.dV + ' mV' : '—') + '</b><small>−ΔV</small></div>' +
-        (tc !== null ? '<div><b>' + tc + ' °C</b><small>temperatura</small></div>' : '') +
+        (tc !== null ? '<div><b>' + fmtTemp(tc) + ' °C</b><small>temperatura</small></div>' : '') +
       '</div>' +
       (s.err ? '<div class="errline">' + errText(s.err) + '</div>' : '') +
+      (endInfo[ch] && END_REASON_TEXT[endInfo[ch].reason] && s.stato !== 2 ? '<div class="sub">Fine carica: ' + endText(endInfo[ch]) + '</div>' : '') +
       '<div class="sub">' + (idle ? 'Nessun programma in corso' : 'Programma: ' + modo) + '</div></div>';
   }).join('');
 }
@@ -3280,9 +3329,11 @@ function diagShow() {
     : 'Byte: 4–5 corrente · 6–7 tensione · 8 temperatura °C (0 = non inviata) · 9 −ΔV · 10–11 mAh · 12–15 secondi · 16–17 resistenza · 18 stato · 19 modo · 20 errore');
   lines.push('');
   lines.push(octa ? 'Temperatura: lo stato dell\'Octa non ha un campo per la temperatura dei canali.'
-    : 'Temperatura: ' + (tempSeen ? 'il caricatore la manda nel byte 8, l\'app la mostra.'
+    : 'Temperatura: ' + (temp10Seen ? 'il firmware risponde al comando 0xC7: l\'app mostra i decimi di grado (byte 8: gradi interi).'
+      : tempSeen ? 'il caricatore la manda nel byte 8, l\'app la mostra.'
       : 'il byte 8 è sempre 0: questo firmware non manda i gradi dei canali via Bluetooth (l\'originale e il v7 non lo fanno). ' +
-        'Se un firmware ci scrive i gradi del canale (numero intero, es. 24 = 24 °C), l\'app li mostra da sola.'));
+        'Se un firmware ci scrive i gradi del canale (numero intero, es. 24 = 24 °C), l\'app li mostra da sola. ' +
+        'Il firmware BANNED v10 li manda nel byte 8 e risponde anche al comando 0xC7 con i decimi.'));
   $('diagOut').textContent = lines.join('\n');
 }
 $('btnDiag').onclick = diagShow;

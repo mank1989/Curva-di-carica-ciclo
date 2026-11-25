@@ -1,5 +1,5 @@
 // NC3000 Controllo: rete prima, cache come riserva (funziona anche senza connessione)
-const CACHE = 'nc3000-v58';
+const CACHE = 'nc3000-v60';
 const SHELL = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', (event) => {
