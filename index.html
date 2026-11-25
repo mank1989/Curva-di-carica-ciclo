@@ -223,6 +223,35 @@
   .fw small { grid-column: 1; grid-row: 2; font-size: 12.5px; color: var(--ink3); align-self: start; line-height: 1.35; }
   .fw select { grid-column: 2; grid-row: 1 / 3; font-size: 14px; padding: 9px 30px 9px 11px; max-width: 46vw; }
   .device .btns { margin: 16px 0 0; }
+  /* riquadro del caricabatterie: nome, stato delle letture, firmware, azioni nel menu ⋯ */
+  .device { position: relative; }
+  .dev-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+  .dev-more { flex: none; width: 38px; height: 38px; border-radius: 50%; border: 1px solid var(--rule2); background: var(--field); color: var(--ink);
+              display: inline-flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; }
+  .dev-more svg { width: 20px; height: 20px; fill: currentColor; }
+  .dev-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--rule); }
+  .livechip { display: inline-flex; align-items: center; gap: 8px; font: 600 13px/1 var(--body); color: var(--ink2, var(--ink)); padding: 8px 12px;
+              border: 1px solid var(--rule); border-radius: 999px; background: var(--field); white-space: nowrap; }
+  .livechip i { width: 8px; height: 8px; border-radius: 50%; background: var(--ink3); flex: none; }
+  .livechip.on i { background: #1f9d55; box-shadow: 0 0 0 3px rgba(31,157,85,.2); }
+  .livechip.paused { cursor: pointer; } .livechip.paused i { background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .fwsel { display: inline-flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--ink3); }
+  .fwsel select { font-size: 14px; padding: 8px 30px 8px 11px; }
+  .dev-menu { position: absolute; right: 12px; top: 58px; z-index: 30; min-width: 210px; background: var(--panel); border: 1px solid var(--rule2);
+              border-radius: 14px; box-shadow: var(--lift); padding: 6px; display: grid; }
+  .dev-menu .mi { text-align: left; padding: 12px 12px; border: 0; background: transparent; color: var(--ink); font: 600 15px var(--body); border-radius: 9px; cursor: pointer; }
+  .dev-menu .mi:not(:disabled):active { background: var(--field); }
+  .dev-menu .mi:disabled { opacity: .38; cursor: default; }
+  .dev-menu .mi.stop { color: #e3262f; }
+  .dev-menu hr { border: 0; border-top: 1px solid var(--rule); margin: 4px 6px; }
+  /* «i» delle spiegazioni */
+  .ibtn { width: 22px; height: 22px; border-radius: 50%; border: 1px solid var(--rule2); background: transparent; color: var(--ink3); padding: 0;
+          font: italic 700 13px/1 Georgia, 'Times New Roman', serif; display: inline-flex; align-items: center; justify-content: center;
+          vertical-align: middle; margin-left: 8px; cursor: pointer; flex: none; }
+  .ibtn:active { color: var(--ink); border-color: var(--ink3); }
+  #infoPop { position: fixed; z-index: 9990; max-width: min(340px, calc(100vw - 24px)); background: var(--panel); color: var(--ink); border: 1px solid var(--rule2);
+             border-radius: 14px; box-shadow: var(--lift); padding: 14px 16px; font-size: 14.5px; line-height: 1.5; }
+  #infoPop[hidden] { display: none; }
 
   /* uscite: una scheda per vano del caricatore, con il livello della pila */
   .cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 0; }
@@ -565,20 +594,28 @@
   <!-- MONITOR -->
   <section id="tab-monitor" class="tab active">
     <div class="panel device">
-      <div class="device-head">
-        <div class="device-name" id="modelName">Caricabatterie</div>
-        <div class="device-sub" id="modelSub">Il modello si riconosce da solo alla connessione</div>
+      <div class="dev-top">
+        <div class="device-head">
+          <div class="device-name" id="modelName">Caricabatterie</div>
+          <div class="device-sub" id="modelSub">Il modello si riconosce da solo alla connessione</div>
+        </div>
+        <button type="button" id="devMore" class="dev-more" aria-label="Altre azioni" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg></button>
       </div>
-      <div class="fw" id="fwRow"><label for="fwSel">Firmware</label><select id="fwSel"><option value="orig">Originale</option><option value="mod">Modificato</option></select><small id="fwHint">scarica max 2,50 A · cicli max 3</small></div>
+      <div class="dev-menu" id="devMenu" hidden>
+        <button type="button" id="btnPoll" class="mi" disabled>Avvia letture</button>
+        <button type="button" id="btnHist" class="mi" disabled>Aggiorna storico</button>
+        <button type="button" id="btnHistSave" class="mi" disabled>Salva storico</button>
+        <button type="button" id="btnExport" class="mi" disabled>Esporta CSV</button>
+        <hr>
+        <button type="button" id="btnDisc" class="mi stop" disabled>Disconnetti</button>
+      </div>
+      <div class="dev-row">
+        <span class="livechip" id="liveChip"><i></i><span id="liveTxt">Non collegato</span></span>
+        <span class="fwsel" id="fwRow"><label for="fwSel">Firmware</label><select id="fwSel"><option value="orig">Originale</option><option value="mod">Modificato</option></select><button type="button" class="ibtn" data-info-src="fwHint" aria-label="Informazioni sul firmware">i</button></span>
+        <small id="fwHint" hidden>scarica max 2,50 A · cicli max 3</small>
+      </div>
       <div id="modelPick" class="btns two" style="display:none"><button id="btnPickPro" class="btn ghost">È un Pro (4 uscite)</button><button id="btnPickOcta" class="btn ghost">È un Octa (8 uscite)</button></div>
       <div class="btns"><button id="btnConnect" class="btn">Connetti</button></div>
-      <div class="tools">
-        <button id="btnPoll" class="tool" disabled>Avvia letture</button>
-        <button id="btnHist" class="tool" disabled>Aggiorna storico</button>
-        <button id="btnHistSave" class="tool" disabled>Salva storico</button>
-        <button id="btnExport" class="tool" disabled>Esporta CSV</button>
-        <button id="btnDisc" class="tool" disabled>Disconnetti</button>
-      </div>
     </div>
 
     <div class="kpis">
@@ -592,7 +629,7 @@
     <div id="latest" class="cards"></div>
     <p class="hint">La pausa ferma l'uscita e ricorda il programma; il tasto riprendi lo fa ripartire. Carica e scarica proseguono fino alla fine, un Ciclo riparte dall'inizio. Si mettono in pausa solo i programmi avviati dall'app.</p>
 
-    <h2 class="sec">Andamento <small>lo storico del caricatore si scarica da solo</small></h2>
+    <h2 class="sec" data-info="Dopo il collegamento l'app scarica da sola lo storico del caricabatterie, così vedi il programma anche da prima che ti collegassi. Tocca un grafico per ingrandirlo.">Andamento</h2>
     <div class="charts">
       <div class="chart wide"><h3>Tensione <span>tocca per ingrandire</span></h3><canvas id="chartV"></canvas></div>
       <div class="chart"><h3>Resistenza interna</h3><canvas id="chartT"></canvas></div>
@@ -762,13 +799,13 @@
     <h2 class="sec">Risultati</h2>
     <div id="raceTable"></div>
 
-    <h2 class="sec">Somiglianza</h2>
+    <h2 class="sec" data-info="Quanto due pile vanno uguali sotto carico. Δ Curva è la differenza media della tensione durante la scarica: più è bassa, più le pile vanno uguali in gara. Contano anche capacità erogata, resistenza e tensione a riposo.">Somiglianza</h2>
     <div id="raceSim"></div>
 
     <h2 class="sec">Storico delle gare</h2>
     <div id="raceHistory"></div>
 
-    <h2 class="sec">Classifica pile</h2>
+    <h2 class="sec" data-info="Il punteggio confronta le pile tra loro (servono almeno due pile). Ripetibilità = quanto varia una pila da una gara all'altra: più è bassa, più è regolare (servono almeno due gare). Salute = come sta la pila rispetto ai suoi valori migliori di capacità e resistenza; sotto 85% conviene passarla alle prove. V a X A = tensione stimata sotto il tuo motore, dalla caduta misurata nelle gare simulate.">Classifica pile</h2>
     <div class="group" data-feat="stats">
       <div class="row"><label>Corrente del tuo motore<small class="hint">per stimare la tensione in pista</small></label><div class="val"><input type="number" id="x_motorA" value="3.0" step="0.1" min="0" max="10" inputmode="decimal"><span class="unit">A</span></div></div>
     </div>
@@ -806,11 +843,11 @@
 
   <!-- GIORNATA DI GARA: mini, manche, coppie e rabbocchi ai box -->
   <section id="tab-box" class="tab" data-feat="box">
-    <h2 class="sec">Mini in gara</h2>
+    <h2 class="sec" data-info="Per ogni mini scegli la coppia e tocca «In pista» quando parte la manche, «Manche finita» quando rientra: la coppia passa a «da caricare». Annulla manche corregge un tocco sbagliato.">Mini in gara</h2>
     <div id="bx_cars"></div>
     <div id="bx_log" class="bxlog"></div>
 
-    <h2 class="sec">Coppie</h2>
+    <h2 class="sec" data-info="I tasti 0,8 / 1,0 / 1,5 A avviano il rabbocco sulle due uscite scelte, con i valori della scheda Programma in modalità Carica. Il numero con ~ sono i minuti stimati dai mAh rientrati nei rabbocchi precedenti. A fine carica arriva un solo avviso per la coppia.">Coppie</h2>
     <div id="bx_pairs"></div>
     <datalist id="bx_cells"></datalist>
 
@@ -2819,7 +2856,6 @@ function renderRaceSim(run) {
       (grp.leftover ? ' · spaiata: <b>' + esc(grp.leftover) + '</b>' : '') + '</p>';
   }
   const best = pairs[0];
-  html += '<p class="hint">Δ Curva = differenza media della tensione sotto carico (più è bassa, più le pile vanno uguali in gara).</p>';
   if (isNum(best.dRest) && best.dRest > 5) {
     html += '<p class="hint warnc">Attenzione: la coppia migliore ha la tensione a riposo diversa di ' + fmt(best.dRest, 0) + ' mV. Prima della gara conviene riportarle allo stesso stato.</p>';
   }
@@ -2856,13 +2892,13 @@ function renderCellBoard() {
   if (weak.length && featOn('stats')) {
     html += '<p class="hint warnc">Da tenere d\'occhio: ' + weak.map(r => '<b>' + esc(r.name) + '</b> (' + r.healthWhy + ')').join(' · ') + '</p>';
   }
-  if (featOn('stats')) html += '<p class="hint">Salute = come sta la pila rispetto ai suoi valori migliori (capacità misurata e resistenza). Sotto 85% conviene passarla alle prove.' +
+  if (false) html += '<p class="hint">Salute = come sta la pila rispetto ai suoi valori migliori (capacità misurata e resistenza). Sotto 85% conviene passarla alle prove.' +
           (mA ? ' V a ' + fmt(mA, 1) + ' A = tensione stimata sotto il tuo motore, dalla caduta misurata nelle gare simulate.' : '') + '</p>';
   if (ranked.length >= 2) {
     html += '<p class="hint">Migliori per punteggio: <b>' + esc(ranked[0].name) + '</b> e <b>' + esc(ranked[1].name) +
-            '</b>. Ripetib. = variazione tra le gare: più è bassa, più la pila è regolare.</p>';
+            '</b>.</p>';
   } else {
-    html += '<p class="hint">Il punteggio confronta almeno due pile. La ripetibilità richiede almeno due gare per pila.</p>';
+    html += '';
   }
   box.innerHTML = html;
 }
@@ -5644,6 +5680,79 @@ setTimeout(autoBackup, 9000);
 
 
 
+
+/* ===================== SPIEGAZIONI CON LA «i» E RIQUADRO DEL CARICABATTERIE ===================== */
+// le spiegazioni fisse (p.hint senza id) diventano una «i» sul titolo della sezione: si leggono solo se servono
+function setupInfo() {
+  const add = (anchor, text) => {
+    if (!anchor || !text) return;
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'ibtn'; b.textContent = 'i'; b.dataset.info = text; b.setAttribute('aria-label', 'Spiegazione');
+    anchor.appendChild(b);
+  };
+  document.querySelectorAll('p.hint:not([id])').forEach(pz => {
+    if (pz.closest('#fwView') || pz.closest('[data-noinfo]')) return;
+    const text = pz.textContent.trim();
+    let anchor = null;
+    const det = pz.closest('details');
+    if (det) anchor = det.querySelector(':scope > summary');
+    if (!anchor) { let e = pz.previousElementSibling; while (e && !(e.matches('h2.sec, h3'))) e = e.previousElementSibling; anchor = e; }
+    if (!anchor) return;
+    add(anchor, text);
+    pz.remove();
+  });
+  document.querySelectorAll('h2.sec[data-info]').forEach(h => { add(h, h.dataset.info); h.removeAttribute('data-info'); });
+}
+function showInfo(btn) {
+  let pop = document.getElementById('infoPop');
+  if (!pop) { pop = document.createElement('div'); pop.id = 'infoPop'; pop.hidden = true; pop.setAttribute('role', 'dialog'); document.body.appendChild(pop); }
+  if (!pop.hidden && pop._from === btn) { pop.hidden = true; return; }
+  const src = btn.dataset.infoSrc ? document.getElementById(btn.dataset.infoSrc) : null;
+  let text = btn.dataset.info || '';
+  if (btn.dataset.infoSrc === 'fwHint') text = 'Scegli «Modificato» se sul caricabatterie c\'è il firmware BANNED: l\'app sblocca i valori che il firmware permette (' + (src ? src.textContent : '') + '). Con «Originale» restano i limiti SkyRC.';
+  pop.textContent = text; pop._from = btn; pop.hidden = false;
+  const r = btn.getBoundingClientRect(), w = pop.offsetWidth, h = pop.offsetHeight;
+  let left = Math.min(Math.max(12, r.left + r.width / 2 - w / 2), window.innerWidth - w - 12);
+  let top = r.bottom + 8;
+  if (top + h > window.innerHeight - 12) top = Math.max(12, r.top - h - 8);
+  pop.style.left = left + 'px'; pop.style.top = top + 'px';
+}
+document.addEventListener('click', e => {
+  const b = e.target.closest('.ibtn');
+  if (b) { e.preventDefault(); e.stopPropagation(); showInfo(b); return; }
+  const pop = document.getElementById('infoPop');
+  if (pop && !pop.hidden && !e.target.closest('#infoPop')) pop.hidden = true;
+}, true);
+window.addEventListener('scroll', () => { const pop = document.getElementById('infoPop'); if (pop) pop.hidden = true; }, { passive: true });
+
+// menu ⋯ del caricabatterie
+$('devMore').addEventListener('click', e => {
+  e.stopPropagation();
+  const m = $('devMenu'); m.hidden = !m.hidden; $('devMore').setAttribute('aria-expanded', String(!m.hidden));
+});
+document.addEventListener('click', e => {
+  const m = $('devMenu');
+  if (m.hidden) return;
+  if (e.target.closest('#devMenu .mi') || !e.target.closest('#devMenu')) { m.hidden = true; $('devMore').setAttribute('aria-expanded', 'false'); }
+});
+// stato delle letture nel riquadro (segue il pulsante delle letture, che resta nel menu)
+function updateLiveChip() {
+  const chip = $('liveChip'), txt = $('liveTxt'), bp = $('btnPoll');
+  const linked = isLinked(), t = bp.textContent.trim();
+  let cls = '', label = 'Non collegato';
+  if (linked) {
+    if (/in corso|della gara/i.test(t)) { cls = 'on'; label = t; }
+    else if (/pausa/i.test(t)) { cls = 'paused'; label = bp.disabled ? 'Letture in pausa' : 'Letture in pausa · riprendi'; }
+    else if (detecting) label = 'Riconosco il modello…';
+    else label = 'Collegato';
+  }
+  chip.className = 'livechip' + (cls ? ' ' + cls : '');
+  if (txt.textContent !== label) txt.textContent = label;
+}
+$('liveChip').addEventListener('click', () => { const bp = $('btnPoll'); if ($('liveChip').classList.contains('paused') && !bp.disabled) bp.click(); });
+new MutationObserver(updateLiveChip).observe($('btnPoll'), { childList: true, characterData: true, subtree: true, attributes: true });
+new MutationObserver(updateLiveChip).observe(document.body, { attributes: true, attributeFilter: ['class'] });
+setInterval(updateLiveChip, 1500);
 /* ===================== COMANDI ▶ ⏸ ■ PER USCITA E PER TUTTE ===================== */
 function chOfSlot(b) { return currentModel === 'octa' ? b : POS_OF_MASK[b]; }
 function noteStart(payload) {
@@ -5977,7 +6086,7 @@ function boxRender() {
            : '<div class="btns three">' + BOX_AMPS.map(I => {
                const est = boxEstimate(p, I);
                return '<button type="button" class="btn ghost" data-bx="charge" data-i="' + i + '" data-amp="' + I + '">' + fmt(I, 1) + ' A' + (est ? ' · ~' + est + '′' : '') + '</button>';
-             }).join('') + '</div><p class="hint">Rabbocco sulle uscite ' + p.chans.join(' e ') + '.' + (boxEstimate(p, 0.8) ? ' ~ = minuti stimati dai rabbocchi precedenti.' : '') + '</p>') +
+             }).join('') + '</div>') +
          '</div></div>';
   });
   $('bx_pairs').innerHTML = q;
@@ -6140,6 +6249,8 @@ $('bx_reset').onclick = () => {
 };
 boxRender();
 applyFeatures();
+setupInfo();
+updateLiveChip();
 loadParams();
 applyModeRows();
 renderLatest();
