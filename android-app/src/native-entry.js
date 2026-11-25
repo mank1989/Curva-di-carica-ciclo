@@ -59,11 +59,24 @@ async function checkUpdate(currentVer) {
   } catch (e) { /* senza internet: resta la versione attuale */ }
 }
 
+// Prove diagnostiche (partono prima di sostituire la pagina): servono a capire dove si ferma il Bluetooth nativo.
+const withTimeout = (p, ms) => Promise.race([Promise.resolve(p), new Promise((_, rej) => setTimeout(() => rej(new Error('nessuna risposta in ' + ms / 1000 + ' s')), ms))]);
+const errTxt = e => String((e && e.message) || e);
+function probe() {
+  const d = window.__nc3000Diag = { plugin: String(Capacitor.isPluginAvailable('BluetoothLe')) };
+  (async () => {
+    try { await withTimeout(KeepAlive.stop(), 3000); d.ponte = 'ok'; } catch (e) { d.ponte = errTxt(e); }
+    try { d.attivo = String(await withTimeout(BleClient.isEnabled(), 5000)); } catch (e) { d.attivo = errTxt(e); }
+    try { await withTimeout(BleClient.initialize({ androidNeverForLocation: true }), 8000); d.init = 'ok'; } catch (e) { d.init = errTxt(e); }
+  })();
+}
+
 async function start() {
   installBluetooth();
+  probe();
   const page = await pickPage();
   const ok = '<script>setTimeout(function(){try{localStorage.setItem("' + K_TRIES + '","0")}catch(e){}},8000)</script>';
-    const at = page.html.lastIndexOf('</body>');
+  const at = page.html.lastIndexOf('</body>');                       // l'ultimo: la pagina ne contiene uno anche dentro il codice
   const html = at >= 0 ? page.html.slice(0, at) + ok + page.html.slice(at) : page.html + ok;
   document.open(); document.write(html); document.close();
   setTimeout(() => checkUpdate(page.ver), 4000);
