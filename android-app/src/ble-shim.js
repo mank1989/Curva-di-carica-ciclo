@@ -18,7 +18,7 @@ const toDV = v => {
 
 export function createBluetooth(Ble, hooks = {}) {
   let initP = null;
-  const init = () => initP || (initP = Ble.initialize().catch(e => { initP = null; throw e; }));
+  const init = () => initP || (initP = Ble.initialize({ androidNeverForLocation: true }).catch(e => { initP = null; throw e; }));
   const devices = new Map();
 
   class Characteristic extends EventTarget {

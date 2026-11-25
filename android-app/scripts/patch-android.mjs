@@ -9,12 +9,20 @@ for (const f of ['MainActivity.java', 'KeepAliveService.java', 'KeepAlivePlugin.
 const mf = path.join(app, 'AndroidManifest.xml');
 let x = fs.readFileSync(mf, 'utf8');
 const perms = [
-  'android.permission.BLUETOOTH', 'android.permission.BLUETOOTH_ADMIN', 'android.permission.BLUETOOTH_CONNECT', 'android.permission.BLUETOOTH_SCAN',
-  'android.permission.ACCESS_FINE_LOCATION', 'android.permission.ACCESS_COARSE_LOCATION',
-  'android.permission.FOREGROUND_SERVICE', 'android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE',
-  'android.permission.POST_NOTIFICATIONS', 'android.permission.WAKE_LOCK', 'android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS'
+  '<uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />',
+  '<uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />',
+  '<uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />',
+  '<uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" tools:targetApi="s" />',
+  '<uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" android:maxSdkVersion="30" />',
+  '<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="30" />',
+  '<uses-permission android:name="android.permission.FOREGROUND_SERVICE" />',
+  '<uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />',
+  '<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />',
+  '<uses-permission android:name="android.permission.WAKE_LOCK" />',
+  '<uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />'
 ];
-const add = perms.filter(p => !x.includes('"' + p + '"')).map(p => '    <uses-permission android:name="' + p + '" />').join('\n');
+const add = perms.map(p => '    ' + p).join('\n');
+if (!/xmlns:tools=/.test(x)) x = x.replace(/<manifest\b/, '<manifest xmlns:tools="http://schemas.android.com/tools"');
 if (!/<\/application>/.test(x)) throw new Error('AndroidManifest.xml inatteso');
 x = x.replace(/<\/application>/, '    <service android:name=".KeepAliveService" android:exported="false" android:foregroundServiceType="connectedDevice" />\n    </application>\n' +
   '    <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />\n' + add + '\n');
