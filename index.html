@@ -2566,6 +2566,35 @@ function loadParams() {
 $('btnConnect').onclick = connect;
 $('btnPoll').onclick = startPolling;
 $('btnDisc').onclick = disconnect;
+
+// Avviso «nuova versione pronta» dell'app Android: col caricabatterie collegato l'APK non mette «Riavvia ora»
+// (e dalla riconnessione automatica è quasi sempre collegato). Lo aggiunge la pagina: i programmi continuano
+// sul caricabatterie e l'app si ricollega da sola dopo il riavvio. Solo la prova gara va lasciata finire.
+function enhanceUpdateBanner() {
+  const box = document.getElementById('nc3000-upd');
+  if (!box || box.dataset.nc) return;
+  box.dataset.nc = '1';
+  if (Array.from(box.querySelectorAll('button')).some(b => /Riavvia/.test(b.textContent))) return;
+  const t = box.firstElementChild;
+  const v = t && /\(v(\d+)\)/.exec(t.textContent);
+  if (t) t.textContent = 'Nuova versione dell\'app pronta' + (v ? ' (v' + v[1] + ')' : '') + '.';
+  const b = document.createElement('button');
+  b.textContent = 'Riavvia ora';
+  b.style.cssText = 'border:0;border-radius:10px;padding:10px 14px;font:600 15px sans-serif;background:#f5c542;color:#000';
+  b.onclick = async () => {
+    if (race) { toast('Prova gara in corso: riavvia quando è finita'); return; }
+    const busy = CHANNELS.filter(ch => latest[ch] && latest[ch].stato >= 2 && latest[ch].stato <= 4);
+    const eq = CHANNELS.filter(ch => eqActive(ch));
+    const all = [...new Set([...busy, ...eq])];
+    if (all.length && !confirm('In corso su ' + all.map(c => 'CH' + c).join(', ') + ': il caricabatterie continua da solo e l\'app si ricollega in pochi secondi. Riavvio?')) return;
+    b.disabled = true;
+    try { if (isLinked() || device) await disconnect(); } catch (e) { /* ignora */ }
+    location.replace('index.html');
+  };
+  const last = box.lastElementChild;
+  if (last && last.tagName === 'BUTTON') { last.textContent = 'Dopo'; box.insertBefore(b, last); } else box.appendChild(b);
+}
+try { new MutationObserver(enhanceUpdateBanner).observe(document.body, { childList: true }); enhanceUpdateBanner(); } catch (e) { /* ignora */ }
 $('btnExport').onclick = exportCsv;
 $('btnHist').onclick = () => downloadHistory();
 $('chartV').onclick = () => { $('chartV').classList.toggle('big'); drawAll(); };
