@@ -233,6 +233,7 @@
           font: italic 700 13px/1 Georgia, 'Times New Roman', serif; display: inline-flex; align-items: center; justify-content: center;
           vertical-align: middle; margin-left: 8px; cursor: pointer; flex: none; }
   .ibtn:active { color: var(--ink); border-color: var(--ink3); }
+  #eqBox:not(.octa) .eq8, #eqBox.base #eq_hoursRow { display: none; }
   #infoPop { position: fixed; z-index: 9990; max-width: min(340px, calc(100vw - 24px)); background: var(--panel); color: var(--ink); border: 1px solid var(--rule2);
              border-radius: 14px; box-shadow: var(--lift); padding: 14px 16px; font-size: 14.5px; line-height: 1.5; }
   #infoPop[hidden] { display: none; }
@@ -611,7 +612,7 @@
       <div class="chart wide"><h3>Tensione <span>tocca per ingrandire</span></h3><canvas id="chartV"></canvas></div>
       <div class="chart"><h3>Resistenza interna</h3><canvas id="chartT"></canvas></div>
       <div class="chart" id="chartTempBox" style="display:none"><h3>Temperatura</h3><canvas id="chartTemp"></canvas></div>
-      <div class="chart" id="chartEqBox" style="display:none"><h3>Equalizzazione <span>corrente media degli impulsi</span></h3><canvas id="chartEq"></canvas></div>
+      <div class="chart" id="chartEqBox" style="display:none"><h3>Equalizzazione <span>corrente media al secondo</span></h3><canvas id="chartEq"></canvas></div>
     </div>
   </section>
 
@@ -659,8 +660,8 @@
       <div class="row" data-modes="3"><label>Modalità ciclo</label><div class="val"><select id="p_cycleMode"><option value="0" selected>C→D</option><option value="1">D→C</option><option value="2">C→D→C</option><option value="3">D→C→D</option></select></div></div>
       <div class="row" data-modes="3"><label>Numero di cicli<small class="hint" id="p_cycleMax">max 3</small></label><div class="val"><input type="number" id="p_cycleCount" value="3" min="1" max="3" inputmode="numeric"><span class="unit"></span></div></div>
       <div class="row" data-modes="0 3"><label>Modalità attuale</label><div class="val"><select id="p_truboMode"><option value="0" selected>Fissa</option><option value="1">IR Auto</option></select></div></div>
-      <div class="row" data-modes="0"><label data-info="Finita la carica, il caricabatterie continua a dare questa corrente bassa per tenere piena la pila mentre aspetta. Non sostituisce una carica fino al picco prima della manche: per la gara conviene il rabbocco nella scheda Box. Limiti SkyRC: da 10 a 300 mA, a passi di 10. Sopra circa un decimo della capacità (circa 100 mA per una 950 mAh) una pila già piena si scalda: per tenerla carica bastano poche decine di mA.">Carica di mantenimento<small class="hint">10–300 mA · 0 = spenta</small></label><div class="val"><input type="number" id="p_track" value="0" step="10" min="0" max="300" inputmode="numeric"><span class="unit">mA</span></div></div>
-      <div class="row" data-modes="0"><label data-info="Finita la carica, se la tensione della pila scende sotto questo valore il caricabatterie riparte con una nuova carica fino al −ΔV. Va da 1,10 a 1,50 V e deve stare sotto la Target Voltage. 0 = spenta.">Tensione di ripartenza<small class="hint">1,10–1,50 V · 0 = spenta</small></label><div class="val"><input type="number" id="p_restartVolt" value="0" step="0.01" min="0" max="1.50" inputmode="decimal"><span class="unit">V</span></div></div>
+      <div class="row" data-modes="0"><label data-info="Finita la carica, il caricabatterie continua a dare questa corrente bassa per tenere piena la pila mentre aspetta. Non sostituisce una carica fino al picco prima della manche: per la gara conviene il rabbocco nella scheda Box. Limiti SkyRC: da 10 a 300 mA, a passi di 10. AVVERTENZE per non rovinare le pile: una pila già piena non assorbe altro, quindi la corrente in più diventa calore. Tienila bassa: per tenerla carica bastano 20–50 mA (circa un ventesimo della capacità); sopra circa un decimo (100 mA per una 950 mAh) la pila si scalda e invecchia prima. Non lasciarla attiva per giorni e controlla che la pila resti fredda al tatto. Se è tiepida, spegnila.">Carica di mantenimento<small class="hint">10–300 mA · 0 = spenta</small></label><div class="val"><input type="number" id="p_track" value="0" step="10" min="0" max="300" inputmode="numeric"><span class="unit">mA</span></div></div>
+      <div class="row" data-modes="0"><label data-info="Finita la carica, se la tensione della pila scende sotto questo valore il caricabatterie riparte con una nuova carica fino al −ΔV. Va da 1,10 a 1,50 V e deve stare sotto la Target Voltage. 0 = spenta (sull'Octa 0 diventa 1,29 V, come nell'app SkyRC). AVVERTENZE per non rovinare le pile: ogni ripartenza è una carica completa che finisce con il picco, quindi calore e un po' di vita in meno. Una NiMH appena carica scende da sola verso 1,40 V nelle prime ore: con la ripartenza a 1,40 V o più ripartirebbe di continuo. Tienila a 1,30–1,35 V e non lasciarla attiva per giorni.">Tensione di ripartenza<small class="hint">1,10–1,50 V · 0 = spenta</small></label><div class="val"><input type="number" id="p_restartVolt" value="0" step="0.01" min="0" max="1.50" inputmode="decimal"><span class="unit">V</span></div></div>
     </div>
 
     <details class="adv">
@@ -691,18 +692,22 @@
     </div>
 
     <details class="adv" id="eqBox" data-feat="eq">
-      <summary>Equalizza (firmware BANNED v12 o successivo)</summary>
+      <summary>Equalizza</summary>
       <div class="group">
-        <div class="row"><label>Tensione a riposo<small class="hint">da 0,90 a 1,30 V</small></label><div class="val"><input type="number" id="eq_target" value="1.00" step="0.01" min="0.90" max="1.30" inputmode="decimal"><span class="unit">V</span></div></div>
-        <div class="row"><label>Tenuta<small class="hint">ferma all'obiettivo, da 1 a 30</small></label><div class="val"><input type="number" id="eq_hold" value="5" min="1" max="30" inputmode="numeric"><span class="unit">min</span></div></div>
+        <div class="row"><label>Cut-off sotto carico<small class="hint" id="eq_cutHint">da 0,80 a 1,00 V · basette 0,85</small></label><div class="val"><input type="number" id="eq_cut" value="0.85" step="0.01" min="0.80" max="1.00" inputmode="decimal"><span class="unit">V</span></div></div>
+        <div class="row" id="eq_hoursRow"><label>Durata massima<small class="hint">da 1 a 12 ore</small></label><div class="val"><input type="number" id="eq_hours" value="6" min="1" max="12" inputmode="numeric"><span class="unit">ore</span></div></div>
         <div class="row"><label class="pick"><input type="checkbox" id="eq_ch1" checked><span class="dot" style="--ch:var(--c1)"></span>Uscita 1</label><div class="val"><span class="hint" id="eq_st1"></span></div></div>
         <div class="row"><label class="pick"><input type="checkbox" id="eq_ch2" checked><span class="dot" style="--ch:var(--c2)"></span>Uscita 2</label><div class="val"><span class="hint" id="eq_st2"></span></div></div>
         <div class="row"><label class="pick"><input type="checkbox" id="eq_ch3" checked><span class="dot" style="--ch:var(--c3)"></span>Uscita 3</label><div class="val"><span class="hint" id="eq_st3"></span></div></div>
         <div class="row"><label class="pick"><input type="checkbox" id="eq_ch4" checked><span class="dot" style="--ch:var(--c4)"></span>Uscita 4</label><div class="val"><span class="hint" id="eq_st4"></span></div></div>
+        <div class="row eq8"><label class="pick"><input type="checkbox" id="eq_ch5" checked><span class="dot" style="--ch:var(--c5)"></span>Uscita 5</label><div class="val"><span class="hint" id="eq_st5"></span></div></div>
+        <div class="row eq8"><label class="pick"><input type="checkbox" id="eq_ch6" checked><span class="dot" style="--ch:var(--c6)"></span>Uscita 6</label><div class="val"><span class="hint" id="eq_st6"></span></div></div>
+        <div class="row eq8"><label class="pick"><input type="checkbox" id="eq_ch7" checked><span class="dot" style="--ch:var(--c7)"></span>Uscita 7</label><div class="val"><span class="hint" id="eq_st7"></span></div></div>
+        <div class="row eq8"><label class="pick"><input type="checkbox" id="eq_ch8" checked><span class="dot" style="--ch:var(--c8)"></span>Uscita 8</label><div class="val"><span class="hint" id="eq_st8"></span></div></div>
       </div>
       <div class="inner">
         <div class="btns two"><button id="btnEqStart" class="btn" disabled>Avvia equalizzazione</button><button id="btnEqStop" class="btn danger" disabled>Ferma</button></div>
-        <p class="hint">Porta ogni pila alla stessa tensione a riposo con brevi impulsi del carico di scarica, poi aspetta che resti lì per il tempo di tenuta. Si ferma da sola se la pila supera 45 °C, dopo 3 ore, se la togli, se premi un tasto del caricatore o se avvii un programma. Durante l'equalizzazione corrente e mAh restano a zero: conta la tensione.</p>
+        <p class="hint">Fa come le basette equalizzatrici. VERSIONE COMPLETA (NC3000 Pro con firmware BANNED v16): scarica la pila senza pause finché, sotto carico, resta sopra il cut-off. Poi passa in HOLD: ogni secondo riaccende il carico e lo stacca appena la pila scende sotto il cut-off, così finisce di svuotarla piano piano. Scrive «pronta» quando in 5 minuti toglie meno di 10 mAh, e resta in HOLD finché non togli la pila, premi un tasto, la fermi o avvii una carica. Il carico è quello di scarica del caricatore: circa 2,8 A con la pila carica, meno quando si svuota. Sopra 45 °C si mette in pausa e riparte sotto 40 °C; sopra 55 °C si ferma. VERSIONE BASE (firmware originale o Octa): tre scariche normali del caricabatterie di fila, a 2,5 A, 1,0 A e 0,5 A, tutte fino al cut-off (da 0,90 V), con un minuto di pausa fra l'una e l'altra: ogni scarica toglie quello che la pila non riusciva a dare alla corrente più alta. Manca il HOLD, quindi alla fine la pila risale un po'; l'app deve restare collegata per far partire le scariche. AVVERTENZE: solo pile NiMH, una per vano; non scendere sotto 0,80 V; non lasciarla incustodita per ore; dopo l'equalizzazione ricarica le pile prima di metterle via, perché una NiMH lasciata vuota per settimane si rovina.</p>
         <p id="eqHint" class="hint"></p>
       </div>
     </details>
@@ -735,7 +740,7 @@
     <div class="btns" id="x_scanAllRow" data-feat="qr" hidden><button type="button" id="x_scanAll" class="btn ghost">Leggi i QR delle pile, uscita per uscita</button></div>
 
     <details class="adv" id="x_irBox" data-feat="irdc">
-      <summary>Resistenza a impulso (firmware BANNED v15)</summary>
+      <summary>Resistenza a impulso (firmware BANNED v15 o successivo)</summary>
       <div class="inner">
         <p class="hint">Tre impulsi di scarica da 0,3 s su ogni pila selezionata in «Uscite e pile»: misura la resistenza vera sotto carico, più precisa del valore del caricabatterie. Le uscite devono essere ferme. Per confrontare le pile conviene misurarle sempre sulla stessa uscita.</p>
         <div class="btns two"><button type="button" id="x_irStart" class="btn">Misura</button><button type="button" id="x_irStop" class="btn ghost">Annulla</button></div>
@@ -890,7 +895,7 @@ const CMD_HEARTBEAT = 0xEE, CMD_NC_DATA = 0x91, CMD_START = 0x94, CMD_STOP = 0xF
 const CMD_INFO = 0x57;
 const CMD_STATUS_OCTA = 0x9A; // stato di tutti gli slot (Octa), sola lettura // richiesta di informazioni (sola lettura), come Cmd.getDeviceInfo dell'app ufficiale
 const CMD_IR = 0xC9;         // firmware BANNED v15+: resistenza interna a impulso (avvio/stato/annulla)
-const CMD_EQ = 0xC8;         // firmware BANNED v12+: equalizzazione (avvio/stop), risponde con 0xC7
+const CMD_EQ = 0xC8;         // firmware BANNED v16: equalizzazione come le basette (avvio/stop), risponde con 0xC7
 const CMD_TEMP10 = 0xC7;     // firmware BANNED v10+: temperatura dei 4 canali in decimi di grado (0F 03 C7 00 C7)
 const CMD_HISTORY = 0x98;     // storico della curva di un'uscita (sola lettura), come Cmd.queryHistoryData dell'app ufficiale
 const MASK_OF_POS = { 1: 1, 2: 2, 3: 4, 4: 8, 5: 16, 6: 32, 7: 64, 8: 128 };
@@ -971,10 +976,10 @@ const FEAT_KEY = 'nc3000_features_v1';
 const FEATS = [
   ['box', 'Giornata di gara', 'scheda Box: mini, manche, rabbocchi'],
   ['qr', 'Etichette e lettura QR', 'nomi delle pile con la fotocamera'],
-  ['irdc', 'Resistenza a impulso', 'firmware BANNED v15'],
+  ['irdc', 'Resistenza a impulso', 'firmware BANNED v15 o successivo'],
   ['voice', 'Annunci vocali', 'fine ciclo, ripetizioni, avvisi'],
   ['repeat', 'Ripetizioni automatiche', 'in Programma'],
-  ['eq', 'Equalizza', 'firmware BANNED v12 o successivo'],
+  ['eq', 'Equalizza', 'completa col firmware BANNED v16, base con gli altri'],
   ['stats', 'Salute pile e tensione col motore', 'colonne in Classifica pile'],
   ['idle', 'Avviso pile ferme', 'all\'apertura dell\'app']
 ];
@@ -1020,15 +1025,24 @@ let temp10 = {};            // canale -> { c: °C con un decimale, t: secondi } 
 let temp10Seen = false;     // il firmware risponde al comando 0xC7 (decimi di grado)
 let endInfo = {};           // canale -> { reason, drop } motivo dell'ultima fine carica (0xC7 versione 2, firmware v11+)
 let eqState = {};           // canale -> stato dell'equalizzazione (0xC7 versione 3, firmware v12+)
+let fwVer = 0;              // versione del firmware BANNED (0xC7 v5, dalla v16)
+let eqHot = {};             // canale -> equalizzazione in pausa per temperatura (v16)
+try { localStorage.removeItem('nc3000_rig_v1'); } catch (e) { /* ignora */ }   // Rigenera (v79) tolta
+const EQB_KEY = 'nc3000_eqb_v1';
+let eqb = (() => { try { return JSON.parse(localStorage.getItem(EQB_KEY) || '{}') || {}; } catch (e) { return {}; } })();   // canale -> Equalizza base
 let eqSeen = false;
 let eqInfo = {};            // canale -> ultimo impulso (0xC7 versione 4, firmware v14+): { t, ph, pulse, iOn, vLoad, removed, n }
 let eqSamples = [];         // [{ t, ch, mA }] corrente media degli impulsi, una per secondo, per il grafico
 let eqPulseSeen = false;
 const EQ_FRESH_S = 3;
 function eqLive(ch, t) { const e = eqInfo[ch]; return e && (t === undefined || t - e.t <= EQ_FRESH_S) ? e : null; }
-function eqAvgMa(e) { return Math.round(e.pulse * e.iOn / 1000); }   // un impulso al secondo
-const EQ_TEXT = { 1: 'in corso', 2: 'in tenuta', 3: 'completata', 4: 'fermata: oltre 45 °C', 5: 'fermata: pila tolta',
-  6: 'fermata: 3 ore raggiunte', 7: 'fermata: programma avviato', 8: 'fermata dalla app', 9: 'non avviata: uscita occupata o senza pila', 10: 'fermata: tasto premuto' };
+function eqAvgMa(e) { return Math.round(e.pulse * e.iOn / 1000); }   // ms di carico acceso nell'ultimo secondo x corrente
+function eqActive(ch) { const st = eqState[ch]; return st >= 1 && st <= 3; }
+// firmware v16: 1 scarica continua, 2 HOLD, 3 pronta (HOLD continua), poi i motivi di fine
+const EQ_TEXT = { 1: 'scarica', 2: 'HOLD', 3: 'pronta · HOLD', 4: 'fermata: oltre 55 °C', 5: 'fermata: pila tolta',
+  6: 'fermata: durata massima', 7: 'fermata: programma avviato', 8: 'fermata dalla app', 9: 'non avviata: uscita occupata, senza pila o in misura',
+  10: 'fermata: tasto premuto', 11: 'non avviata: pila sotto 0,50 V' };
+function eqText(ch) { return eqHot[ch] && eqActive(ch) ? 'in pausa: troppo calda' : (EQ_TEXT[eqState[ch]] || ('stato ' + eqState[ch])); }
 const END_REASON_TEXT = { 1: '−ΔV', 2: 'calo prolungato dopo il picco', 3: 'tensione ferma per alcuni minuti', 4: 'tensione massima' };
 function endText(e) { return END_REASON_TEXT[e.reason] + (e.drop ? ' (calo ' + e.drop + ' mV dal picco)' : ''); }
 const TEMP10_FRESH_S = 3;   // una lettura 0xC7 vale per i pacchetti 0x91 dei 3 secondi successivi
@@ -1046,9 +1060,11 @@ function fmtTemp(c) { return temp10Seen ? c.toFixed(1).replace('.', ',') : Strin
 // versione 2 (firmware v11+): 0F 14 C7 0F T1..T4 02 R1..R4 D1..D4 somma  (Rn motivo fine carica, Dn calo dal picco in mV)
 // versione 3 (v12+): come la 2 con 03 e in più E1..E4 (stato equalizzazione), 26 byte
 // versione 4 (v14+): 0F 3C C7 0F T1..T4 04 R1..R4 D1..D4 E1..E4 P1..P4 I1..I4 U1..U4 M1..M4 N1..N4 somma (62 byte)
+// versione 5 (v16):  come la 4 con 05, e in più VER (versione del firmware) e HOT (uscite in pausa per calore), 64 byte
 //   Pn ultimo impulso ms, In corrente dell'impulso mA, Un tensione sotto carico mV, Mn mAh tolti ×10 (2 byte), Nn impulsi fatti
 function handleTemp10Frame(f, t) {
-  const v4 = f.length === 62 && f[1] === 60 && f[12] === 4;
+  const v5 = f.length === 64 && f[1] === 62 && f[12] === 5;    // firmware v16: + versione e pausa per calore
+  const v4 = v5 || (f.length === 62 && f[1] === 60 && f[12] === 4);
   const v3 = v4 || (f.length === 26 && f[1] === 24 && f[12] === 3);
   const v2 = v3 || (f.length === 22 && f[1] === 20 && f[12] === 2);
   if (!v2 && (f.length !== 14 || f[1] !== 12) || f[3] !== 0x0F) {
@@ -1056,6 +1072,7 @@ function handleTemp10Frame(f, t) {
     return;
   }
   fwDetect(true);
+  if (v5 && fwVer !== f[61]) { fwVer = f[61]; addLog('Firmware BANNED v' + fwVer); updateEqButtons(); }
   const parts = [];
   for (let ch = 1; ch <= 4; ch++) {
     const v = (f[2 + 2 * ch] << 8) | f[3 + 2 * ch];
@@ -1073,23 +1090,26 @@ function handleTemp10Frame(f, t) {
     if (!eqSeen) { eqSeen = true; updateEqButtons(); }
     for (let ch = 1; ch <= 4; ch++) {
       const st = f[20 + ch];
-      if ((eqState[ch] || 0) !== st && st) addLog('CH' + ch + ' equalizzazione: ' + (EQ_TEXT[st] || ('stato ' + st)));
-      eqState[ch] = st;
+      const hot = v5 ? !!(f[62] & (1 << (ch - 1))) : false;
+      if (((eqState[ch] || 0) !== st && st) || (eqHot[ch] || false) !== hot) {
+        eqState[ch] = st; eqHot[ch] = hot;
+        addLog('CH' + ch + ' equalizzazione: ' + eqText(ch));
+      }
+      eqState[ch] = st; eqHot[ch] = hot;
       if (v4) {
         const be = i => (f[i] << 8) | f[i + 1];
         const e = { t, ph: st, pulse: be(23 + 2 * ch), iOn: be(31 + 2 * ch), vLoad: be(39 + 2 * ch), removed: be(47 + 2 * ch) / 10, n: f[56 + ch] };
         const prev = eqInfo[ch];
         e.missed = prev && t - prev.t < 5 ? Math.max(0, ((e.n - prev.n) & 255) - 1) : 0;   // impulsi fatti fra due letture
         eqInfo[ch] = e;
-        if (st === 1 || st === 2) {
-          if (!eqPulseSeen) { eqPulseSeen = true; addLog('Il firmware manda gli impulsi dell\'equalizzazione (0xC7 v4)'); }
+        if (st >= 1 && st <= 3) {
+          if (!eqPulseSeen) { eqPulseSeen = true; addLog('Il firmware manda i dati dell\'equalizzazione (0xC7 v' + f[12] + ')'); }
           eqSamples.push({ t, ch, mA: eqAvgMa(e) });
           if (eqSamples.length > 20000) eqSamples = eqSamples.filter((_, i) => i % 2 === 0);
-          if (e.pulse) addLog('CH' + ch + ' impulso ' + e.pulse + ' ms a ' + e.iOn + ' mA, ' + e.vLoad + ' mV sotto carico, tolti ' + e.removed.toFixed(1) + ' mAh');
         }
       }
       const el = $('eq_st' + ch);
-      if (el) el.textContent = st ? (EQ_TEXT[st] || ('stato ' + st)) + (eqInfo[ch] && v4 && eqInfo[ch].removed ? ' · tolti ' + eqInfo[ch].removed.toFixed(1).replace('.', ',') + ' mAh' : '') : '';
+      if (el) el.textContent = st ? eqText(ch) + (eqInfo[ch] && v4 && eqInfo[ch].removed ? ' · tolti ' + eqInfo[ch].removed.toFixed(1).replace('.', ',') + ' mAh' : '') : '';
     }
     if (v4) renderLatest();
   }
@@ -1125,6 +1145,7 @@ function fwDetect(mod) {
   if (currentModel === 'octa') return;
   if (fwKnown && (!mod || proFirmware === 'mod')) return;   // una risposta 0xC7 arrivata tardi corregge sempre
   fwKnown = true;
+  setTimeout(() => { try { updateEqButtons(); } catch (e) { /* ignora */ } }, 0);
   const v = mod ? 'mod' : 'orig';
   addLog('Firmware riconosciuto: ' + (mod ? 'BANNED (risponde a 0xC7)' : 'originale SkyRC (nessuna risposta a 0xC7)'));
   if (proFirmware !== v) setFirmware(v);
@@ -1365,7 +1386,7 @@ function assertAllowed(cmd, payload) {
     if (currentModel === 'octa' || payload.length !== 5 || !(payload[1] >= 1 && payload[1] <= 15)) return false;
     if (payload[0] === 0) return true;
     const mv = (payload[2] << 8) | payload[3];
-    return payload[0] === 1 && mv >= 900 && mv <= 1300 && payload[4] >= 1 && payload[4] <= 30;
+    return payload[0] === 1 && mv >= 800 && mv <= 1000 && payload[4] >= 1 && payload[4] <= 12;
   }
   if (cmd === CMD_IR) return currentModel !== 'octa' && payload.length === 2 && [0, 1, 2].includes(payload[0]) && payload[1] >= 0 && payload[1] <= 15;
   return false;
@@ -1441,7 +1462,7 @@ function handleFrame(f) {
     err: f[20],                                                  // codice di errore (0 = nessuno)
     hex: hex(f)
   };
-  if (eqState[ch] === 1 || eqState[ch] === 2) { const q = eqLive(ch, t); if (q) s.eq = q; }   // equalizzazione (v14+)
+  if (eqActive(ch)) { const q = eqLive(ch, t); if (q) s.eq = q; }   // equalizzazione (v14+)
   pushSample(s);
   latest[ch] = s;
   proDataSeen = true;
@@ -1994,7 +2015,7 @@ async function linkDevice(d, again) {
     rxBuf = [];
     clearTimeout(autoHistTimer);
     if (!again) {
-      samples = []; latest = {}; histData = {}; c7Asked = 0; fwKnown = false; tempSeen = false; temp10 = {}; temp10Seen = false; endInfo = {}; eqState = {}; eqSeen = false; eqInfo = {}; eqSamples = []; eqPulseSeen = false;
+      samples = []; latest = {}; histData = {}; c7Asked = 0; fwKnown = false; tempSeen = false; temp10 = {}; temp10Seen = false; endInfo = {}; eqState = {}; eqHot = {}; fwVer = 0; eqSeen = false; eqInfo = {}; eqSamples = []; eqPulseSeen = false;
       for (const k in prevStato) delete prevStato[k];
       txCount = 0; rxOk = 0; rxBad = 0; logLines = [];
       t0 = Date.now();
@@ -2109,11 +2130,13 @@ function checkCycleEnd(s) {
   prevStato[s.ch] = s.stato;
   const done = s.stato === 5 || s.stato === 6;
   if (p === undefined) {                 // prima lettura dopo un riavvio dell'app: programma finito mentre era chiusa
+    if (done && eqb[s.ch] && eqb[s.ch].state === 'run' && Date.now() - eqb[s.ch].stepAt > 60000 && eqbOnEnd(s)) return;
     const r = repeats[s.ch];
     if (done && r && !r.waiting && Date.now() - (r.startedAt || 0) > 60000) repeatOnEnd(s);
     return;
   }
   if (!(p === 2 || p === 3 || p === 4) || !done) return;
+  if (eqbOnEnd(s)) { markActivity(s.ch); return; }   // una scarica di Equalizza base
   const modo = (MODE_LABEL[s.modo] || 'programma').toLowerCase();
   const rep = repeatOnEnd(s);            // null, oppure { done, total }
   const repTxt = rep ? (rep.done < rep.total ? ' · ripetizione ' + rep.done + ' di ' + rep.total : ' · ripetizioni finite (' + rep.total + ')') : '';
@@ -2225,33 +2248,170 @@ function eqMask() {
   for (let ch = 1; ch <= 4; ch++) if ($('eq_ch' + ch).checked) m |= 1 << (ch - 1);
   return m;
 }
+// completa: NC3000 Pro con firmware BANNED v16 · base: tutti gli altri (scariche normali di fila)
+function eqFull() { return currentModel !== 'octa' && fwVer >= 16; }
+function eqKnown() { return currentModel === 'octa' || fwVer >= 16 || fwKnown; }   // sul Pro si aspetta il riconoscimento del firmware
 function updateEqButtons() {
-  const ok = isLinked() && currentModel !== 'octa';
+  const box = $('eqBox');
+  const full = eqFull();
+  if (box) { box.classList.toggle('octa', currentModel === 'octa'); box.classList.toggle('base', !full); }
+  const ch = $('eq_cutHint'); if (ch) ch.textContent = full ? 'da 0,80 a 1,00 V · basette 0,85' : 'da 0,90 a 1,00 V';
+  const ok = isLinked() && eqKnown();
   $('btnEqStart').disabled = !ok;
-  $('btnEqStop').disabled = !ok;
+  $('btnEqStop').disabled = !isLinked();
+  const anyBase = Object.keys(eqb).some(k => eqb[k].state !== 'done');
   $('eqHint').textContent = !isLinked() ? 'Connetti prima il caricabatterie.'
-    : currentModel === 'octa' ? 'Solo per NC3000 Pro con firmware BANNED v12 o successivo.'
-    : eqSeen ? '' : 'Il firmware non ha ancora risposto: serve la v12 o successiva e le letture avviate.';
+    : !eqKnown() ? 'Riconosco il firmware…'
+    : full ? ''
+    : anyBase ? $('eqHint').textContent
+    : 'Versione base' + (currentModel === 'octa' ? '' : ' (senza firmware BANNED v16)') + ': tre scariche a 2,5 A, 1,0 A e 0,5 A fino al cut-off, senza HOLD. L\'app deve restare collegata.';
+}
+function eqParams() {
+  const cut = Number(String($('eq_cut').value).replace(',', '.'));
+  const hours = Math.round(Number($('eq_hours').value));
+  const errs = [];
+  if (!(cut >= 0.8 && cut <= 1.0)) errs.push('cut-off fra 0,80 e 1,00 V');
+  if (!(hours >= 1 && hours <= 12)) errs.push('durata fra 1 e 12 ore');
+  return { mv: Math.round(cut * 1000), hours, errs };
+}
+function eqSend(mask, mv, hours, label) {
+  return sendSafe(CMD_EQ, [1, mask, mv >> 8, mv & 255, hours], '0xC8 equalizza ' + (label || '')) !== null;
+}
+// un'uscita con un programma completato va liberata (0xFE) prima dell'equalizzazione: restituisce le uscite liberate
+function eqFreeDone(mask) {
+  const freed = [];
+  for (let ch = 1; ch <= 4; ch++) {
+    if (!(mask & (1 << (ch - 1)))) continue;
+    const st = latest[ch];
+    if (st && (st.stato === 5 || st.stato === 6)) { sendSafe(CMD_STOP, [slotByte(ch)], '0xFE CH' + ch + ' (libera l\'uscita)'); freed.push(ch); }
+  }
+  return freed;
 }
 function eqStart() {
-  const v = Number(String($('eq_target').value).replace(',', '.'));
-  const hold = Math.round(Number($('eq_hold').value));
+  if (!eqFull()) { eqbStart(); return; }
+  const q = eqParams();
   const m = eqMask();
-  const errs = [];
-  if (!(v >= 0.9 && v <= 1.3)) errs.push('tensione a riposo fra 0,90 e 1,30 V');
-  if (!(hold >= 1 && hold <= 30)) errs.push('tenuta fra 1 e 30 minuti');
-  if (!m) errs.push('scegli almeno un\'uscita');
-  if (errs.length) { $('eqHint').textContent = 'Controlla: ' + errs.join(', ') + '.'; return; }
-  const mv = Math.round(v * 1000);
-  if (sendSafe(CMD_EQ, [1, m, mv >> 8, mv & 255, hold], '0xC8 equalizza') !== null) {
-    $('eqHint').textContent = 'Avviata a ' + v.toFixed(2).replace('.', ',') + ' V, tenuta ' + hold + ' min.';
-    addLog('Equalizzazione avviata: ' + mv + ' mV a riposo, tenuta ' + hold + ' min, uscite ' + [1, 2, 3, 4].filter(c => m & (1 << (c - 1))).join(', '));
+  if (!m) q.errs.push('scegli almeno un\'uscita');
+  if (q.errs.length) { $('eqHint').textContent = 'Controlla: ' + q.errs.join(', ') + '.'; return; }
+  saveEqFields();
+  const send = () => eqSend(m, q.mv, q.hours);
+  const freed = eqFreeDone(m);
+  if (freed.length) { setTimeout(send, 2000); $('eqHint').textContent = 'Libero ' + freed.map(c => 'CH' + c).join(', ') + ' e parto…'; return; }
+  if (send()) {
+    $('eqHint').textContent = 'Avviata: cut-off ' + (q.mv / 1000).toFixed(2).replace('.', ',') + ' V sotto carico, al massimo ' + q.hours + (q.hours === 1 ? ' ora.' : ' ore.');
+    addLog('Equalizzazione avviata: cut-off ' + q.mv + ' mV, massimo ' + q.hours + ' h, uscite ' + [1, 2, 3, 4].filter(c => m & (1 << (c - 1))).join(', '));
   }
 }
 function eqStop() {
+  if (!eqFull()) { eqbStop(); return; }
   const m = eqMask() || 15;
   if (sendSafe(CMD_EQ, [0, m, 0, 0, 0], '0xC8 ferma') !== null) $('eqHint').textContent = 'Stop inviato.';
 }
+const EQ_FIELDS = ['eq_cut', 'eq_hours'];
+
+/* ===================== EQUALIZZA BASE: scariche normali di fila (firmware originale, Octa) ===================== */
+const EQB_PAUSE_MS = 60000;
+function saveEqb() { writeJSON(EQB_KEY, eqb); }
+function eqbSteps() { return [Math.min(2500, maxDischargeMa()), 1000, 500]; }
+function eqbChans() { return CHANNELS.filter(ch => $('eq_ch' + ch) && $('eq_ch' + ch).checked); }
+// una scarica normale: capacità 0 (nessun limite), fino al cut-off, timer 3 ore
+function eqbParams(ch, r) {
+  return Object.assign(readParams(), { model: 1, position: ch, capacity: 0, dischargeE: r.steps[r.step],
+                                       outStopVoltage: r.mv, outStopCurrent: 0, inTimeProtect: 180 });
+}
+function eqbStartStep(ch) {
+  const r = eqb[ch];
+  if (!r || !isLinked()) return false;
+  const p = eqbParams(ch, r);
+  const d = validateDetailed(p);
+  if (d.length) { eqbEnd(ch, d[0].label + ': ' + d[0].msg); return false; }
+  if (!startOn(ch, Array.from(buildSettings(p)), '0x94 CH' + ch + ' (equalizza base, scarica ' + (r.step + 1) + ' di ' + r.steps.length + ')')) return false;
+  r.state = 'run'; r.stepAt = Date.now(); saveEqb(); renderEqb();
+  return true;
+}
+function eqbStart() {
+  const cut0 = Number(String($('eq_cut').value).replace(',', '.'));
+  const cut = cut0 >= 0.8 && cut0 < 0.9 ? 0.9 : cut0;      // la versione base parte da 0,90 V
+  const chs = eqbChans();
+  const errs = [];
+  if (!(cut >= 0.9 && cut <= 1.0)) errs.push('cut-off fra 0,90 e 1,00 V');
+  if (!chs.length) errs.push('scegli almeno un\'uscita');
+  for (const ch of chs) {
+    const st = latest[ch];
+    if (!st || st.stato === 0) errs.push('CH' + ch + ' senza pila');
+    else if (st.stato >= 2 && st.stato <= 4) errs.push('CH' + ch + ' ha un programma in corso');
+  }
+  if (errs.length) { $('eqHint').textContent = 'Controlla: ' + errs.join('; ') + '.'; return; }
+  saveEqFields();
+  const mv = Math.round(cut * 1000), steps = eqbSteps();
+  for (const ch of chs) {
+    cancelRepeat(ch);
+    eqb[ch] = { step: 0, steps, mv, removed: [], state: 'run', stepAt: Date.now() };
+    eqbStartStep(ch);
+  }
+  saveEqb();
+  addLog('Equalizza base avviata su ' + chs.map(c => 'CH' + c).join(', ') + ': scariche a ' + steps.map(ampTxt).join(', ') + ' fino a ' + mv + ' mV');
+  $('eqHint').textContent = cut !== cut0 ? 'Cut-off 0,90 V: è il minimo della versione base.' : '';
+  renderEqb(); updateEqButtons();
+}
+function eqbStop() {
+  const chs = Object.keys(eqb).map(Number).filter(ch => eqb[ch].state !== 'done');
+  for (const ch of chs) {
+    if (eqb[ch].state === 'run') stopChannel(ch);
+    eqbEnd(ch, 'fermata da te', true);
+  }
+}
+function eqbEnd(ch, why, quiet) {
+  const r = eqb[ch];
+  if (!r) return;
+  r.state = 'done'; r.why = why; saveEqb(); renderEqb(); updateEqButtons();
+  addLog('CH' + ch + ' equalizza base: ' + why);
+  if (!quiet) nativeCall('alert', 'NC3000 · CH' + ch, 'Equalizza: ' + why, 170 + ch, true);
+}
+// fine di una scarica (da checkCycleEnd): true se l'uscita è in Equalizza base
+function eqbOnEnd(s) {
+  const r = eqb[s.ch];
+  if (!r || r.state !== 'run' || Date.now() - r.stepAt < 15000) return false;
+  r.removed[r.step] = s.cap;
+  const tot = r.removed.filter(isNum).reduce((a, b) => a + b, 0);
+  if (r.step + 1 < r.steps.length) {
+    r.step++; r.state = 'wait'; r.stepAt = Date.now(); saveEqb(); renderEqb();
+    addLog('CH' + s.ch + ' equalizza base: scarica ' + r.step + ' finita (' + s.cap + ' mAh), fra un minuto la ' + (r.step + 1) + ' a ' + ampTxt(r.steps[r.step]));
+    return true;
+  }
+  r.state = 'done'; r.why = ''; saveEqb(); renderEqb(); updateEqButtons();
+  const txt = 'Equalizza finita: tolti ' + tot + ' mAh (' + r.removed.map(x => isNum(x) ? x : 0).join(' + ') + ')';
+  addLog('CH' + s.ch + ': ' + txt);
+  playNotify('end');
+  nativeCall('alert', 'NC3000 · CH' + s.ch, txt, 170 + s.ch, true);
+  speak('Uscita ' + s.ch + ', equalizzazione finita, tolti ' + tot + ' milliampere ora');
+  return true;
+}
+// ogni 5 s: fa partire la scarica dopo la pausa e si accorge delle scariche interrotte
+setInterval(() => {
+  if (!isLinked()) return;
+  for (const ch of Object.keys(eqb).map(Number)) {
+    const r = eqb[ch];
+    if (r.state === 'wait' && Date.now() - r.stepAt >= EQB_PAUSE_MS) eqbStartStep(ch);
+    else if (r.state === 'run' && Date.now() - r.stepAt > 30000) {
+      const st = latest[ch];
+      if (st && st.stato === 0) eqbEnd(ch, 'pila tolta');
+      else if (st && st.stato === 1) eqbEnd(ch, 'scarica interrotta');   // uscita ferma senza «completato»: fermata a mano
+    }
+  }
+}, 5000);
+function renderEqb() {
+  for (const ch of Object.keys(eqb).map(Number)) {
+    const r = eqb[ch], el = $('eq_st' + ch);
+    if (!el) continue;
+    const tot = r.removed.filter(isNum).reduce((a, b) => a + b, 0);
+    el.textContent = r.state === 'run' ? 'scarica ' + (r.step + 1) + ' di ' + r.steps.length + ' a ' + ampTxt(r.steps[r.step])
+      : r.state === 'wait' ? 'pausa, poi scarica ' + (r.step + 1) + ' a ' + ampTxt(r.steps[r.step])
+      : (r.why ? r.why : 'finita') + (tot ? ' · tolti ' + tot + ' mAh' : '');
+  }
+}
+function saveEqFields() { const o = {}; for (const id of EQ_FIELDS) o[id] = $(id).value; writeJSON('nc3000_eq_v1', o); }
+(() => { const o = readJSON('nc3000_eq_v1', null); if (o) for (const id of EQ_FIELDS) if (o[id] !== undefined && $(id)) $(id).value = o[id]; })();
 
 function updateStartButton() {
   const sr = startBlockers();
@@ -2300,10 +2460,19 @@ function startOn(ch, payload, label) {
 // Il caricabatterie in scarica legge anche la capacità: senza questo userebbe quella della carica (es. 950 mAh).
 function dischargeNoCap(p) { if (p.model === 1) p.capacity = 0; return p; }
 
+// mantenimento o ripartenza alti: si chiede conferma (non sono errori, ma rovinano le pile se lasciati a lungo)
+function riskyKeepOk(p) {
+  if (p.model !== 0) return true;
+  const w = [];
+  if (p.track > 100 || (p.capacity && p.track > p.capacity / 10)) w.push('carica di mantenimento ' + p.track + ' mA (per tenerla piena bastano 20–50 mA)');
+  if (p.restartVolt > 1380) w.push('ripartenza a ' + (p.restartVolt / 1000).toFixed(2).replace('.', ',') + ' V (meglio 1,30–1,35 V)');
+  return !w.length || confirm('Attenzione: ' + w.join(' e ') + '. Con valori così la pila si scalda e invecchia prima. Avvio lo stesso?');
+}
 function startProgram() {
   if (startBlockers().length) return;
   const p = dischargeNoCap(readParams());
   if (!checkProgram(p)) return;
+  if (!riskyKeepOk(p)) return;
   saveParams();
   const blob = buildSettings(p);
   if (!startOn(p.position, Array.from(blob), '0x94 CH' + p.position + ' (programma)')) return;
@@ -2322,6 +2491,7 @@ function startAll() {
   if (startBlockers().length) return;
   const p = dischargeNoCap(readParams());
   if (!checkProgram(p)) return;
+  if (!riskyKeepOk(p)) return;
   saveParams();
   let failed = 0;
   for (const pos of CHANNELS) {
@@ -2403,6 +2573,8 @@ if (window.addEventListener) window.addEventListener('resize', () => drawAll());
 $('btnStart').onclick = startProgram;
 $('btnEqStart').onclick = eqStart;
 $('btnEqStop').onclick = eqStop;
+renderEqb();
+updateEqButtons();
 $('btnStartAll').onclick = startAll;
 document.querySelectorAll('[id^="p_"]').forEach(el => {
   const changed = () => {
@@ -3630,15 +3802,15 @@ function cardContent(ch, rLimit, num) {
     const stato = paused[ch] && idle ? 'in pausa' : idle ? (s.stato === 1 ? 'pronta' : 'inserita') : (STATO_LABEL[s.stato] || ('stato ' + s.stato));
     const modo = MODE_LABEL[s.modo] || ('modo ' + s.modo);
     const tc = tempOf(s);
-    const eq = (eqState[ch] === 1 || eqState[ch] === 2) ? eqLive(ch, s.t) : null;   // impulsi in corso (v14+)
-    const eqDone = eqInfo[ch] && eqInfo[ch].removed && eqState[ch] >= 3 ? eqInfo[ch] : null;
+    const eq = eqActive(ch) ? eqLive(ch, s.t) : null;   // equalizzazione in corso (v16)
+    const eqDone = eqInfo[ch] && eqInfo[ch].removed && eqState[ch] >= 4 ? eqInfo[ch] : null;
     const curA = eq ? eqAvgMa(eq) / 1000 : s.mA / 1000;
     return { cls: 'on', html:
       '<div class="cardhead"><span class="ch">CH' + ch + '</span><span class="state">' + stato + '</span></div>' +
       '<div class="vrow"><div class="v">' + num(V, 3) + '<small>V</small></div>' +
       '<div class="cell" aria-hidden="true"><i style="height:' + lvl + '%"></i></div></div>' +
       '<div class="metrics">' +
-        '<div><b>' + num(curA, 2) + ' A</b><small>' + (eq ? 'media impulsi' : 'corrente') + '</small></div>' +
+        '<div><b>' + num(curA, 2) + ' A</b><small>' + (eq ? 'media' : 'corrente') + '</small></div>' +
         (eq ? '<div><b>' + num(eq.removed, 1) + ' mAh</b><small>tolti</small></div>'
             : '<div><b>' + s.cap + ' mAh</b><small>capacità</small></div>') +
         '<div' + (s.ir > rLimit ? ' class="hot"' : '') + '><b>' + (s.ir > 0 ? s.ir + ' mΩ' : '—') + '</b><small>resistenza</small></div>' +
@@ -3647,10 +3819,10 @@ function cardContent(ch, rLimit, num) {
       '</div>' +
       (s.err ? '<div class="errline">' + errText(s.err) + '</div>' : '') +
       (endInfo[ch] && END_REASON_TEXT[endInfo[ch].reason] && s.stato !== 2 ? '<div class="sub">Fine carica: ' + endText(endInfo[ch]) + '</div>' : '') +
-      (eqState[ch] && EQ_TEXT[eqState[ch]] ? '<div class="sub">Equalizzazione: ' + EQ_TEXT[eqState[ch]] +
-        (eq && eq.pulse ? '<br>Impulso ' + eq.pulse + ' ms a ' + num(eq.iOn / 1000, 2) + ' A · ' + num(eq.vLoad / 1000, 3) + ' V sotto carico' +
-           '<div class="eqbar" title="durata dell\'impulso (massimo 400 ms)"><i style="width:' + Math.min(100, eq.pulse / 4) + '%"></i></div>'
-         : eq ? '<br>Nessun impulso: pila già all\'obiettivo' : '') +
+      (eqState[ch] && EQ_TEXT[eqState[ch]] ? '<div class="sub">Equalizzazione: ' + eqText(ch) +
+        (eq && eq.pulse ? '<br>Carico acceso ' + (eq.pulse >= 1000 ? 'sempre' : eq.pulse + ' ms al secondo') + ' · ' + num(eq.iOn / 1000, 2) + ' A · ' + num(eq.vLoad / 1000, 3) + ' V sotto carico' +
+           '<div class="eqbar" title="carico acceso nell\'ultimo secondo"><i style="width:' + Math.min(100, eq.pulse / 10) + '%"></i></div>'
+         : eq ? '<br>Carico spento: la pila è sotto il cut-off' : '') +
         (eqDone ? ' · tolti ' + num(eqDone.removed, 1) + ' mAh' : '') + '</div>' : '') +
       (paused[ch] && idle ? pauseLine(ch) : '<div class="sub">' + (idle ? 'Nessun programma in corso' : 'Programma: ' + modo) + '</div>') };
 }
@@ -4183,6 +4355,7 @@ function applyModel(m) {
   drawAll();
   $('status').textContent = MODEL_DEF[currentModel].label;
   updateDischargeHints();
+  try { updateEqButtons(); } catch (e) { /* ignora */ }
 }
 
 applyModel(localStorage.getItem(MODEL_KEY) || 'pro');
@@ -5783,7 +5956,7 @@ function irFinish() {
 }
 function irStart() {
   if (!isLinked()) { toast('Connetti prima il caricabatterie'); return; }
-  if (currentModel === 'octa') { toast('La misura a impulso è solo per l\'NC3000 Pro col firmware BANNED v15'); return; }
+  if (currentModel === 'octa') { toast('La misura a impulso è solo per l\'NC3000 Pro col firmware BANNED v15 o successivo'); return; }
   const chans = irChans();
   if (!chans.length) { toast('Seleziona almeno un\'uscita in «Uscite e pile»'); return; }
   const mask = chans.reduce((m, ch) => m | (1 << (ch - 1)), 0);
@@ -5797,7 +5970,7 @@ function irStart() {
     const age = Date.now() - irRun.start;
     if (!irRun.lastRx && age > 3500) {
       clearInterval(irRun.timer); irRun = null; $('x_irStart').disabled = false;
-      $('x_irOut').innerHTML = '<p class="hint warnc">Nessuna risposta: serve il firmware BANNED v15 sul caricabatterie.</p>';
+      $('x_irOut').innerHTML = '<p class="hint warnc">Nessuna risposta: serve il firmware BANNED v15 o successivo sul caricabatterie.</p>';
       return;
     }
     if (age > 30000) { irFinish(); return; }
