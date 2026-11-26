@@ -659,8 +659,8 @@
       <div class="row" data-modes="3"><label>Modalità ciclo</label><div class="val"><select id="p_cycleMode"><option value="0" selected>C→D</option><option value="1">D→C</option><option value="2">C→D→C</option><option value="3">D→C→D</option></select></div></div>
       <div class="row" data-modes="3"><label>Numero di cicli<small class="hint" id="p_cycleMax">max 3</small></label><div class="val"><input type="number" id="p_cycleCount" value="3" min="1" max="3" inputmode="numeric"><span class="unit"></span></div></div>
       <div class="row" data-modes="0 3"><label>Modalità attuale</label><div class="val"><select id="p_truboMode"><option value="0" selected>Fissa</option><option value="1">IR Auto</option></select></div></div>
-      <div class="row" data-modes="0"><label>Carica di mantenimento<small class="hint">trickle a fine carica · 0 = spenta</small></label><div class="val"><input type="number" id="p_track" value="0" step="10" min="0" max="500" inputmode="numeric"><span class="unit">mA</span></div></div>
-      <div class="row" data-modes="0"><label>Tensione di ripartenza<small class="hint">sotto questa la carica riparte · 0 = spenta</small></label><div class="val"><input type="number" id="p_restartVolt" value="0" step="0.01" min="0" max="1.50" inputmode="decimal"><span class="unit">V</span></div></div>
+      <div class="row" data-modes="0"><label data-info="Finita la carica, il caricabatterie continua a dare questa corrente bassa per tenere piena la pila mentre aspetta. Non sostituisce una carica fino al picco prima della manche: per la gara conviene il rabbocco nella scheda Box. Limiti SkyRC: da 10 a 300 mA, a passi di 10. Sopra circa un decimo della capacità (circa 100 mA per una 950 mAh) una pila già piena si scalda: per tenerla carica bastano poche decine di mA.">Carica di mantenimento<small class="hint">10–300 mA · 0 = spenta</small></label><div class="val"><input type="number" id="p_track" value="0" step="10" min="0" max="300" inputmode="numeric"><span class="unit">mA</span></div></div>
+      <div class="row" data-modes="0"><label data-info="Finita la carica, se la tensione della pila scende sotto questo valore il caricabatterie riparte con una nuova carica fino al −ΔV. Va da 1,10 a 1,50 V e deve stare sotto la Target Voltage. 0 = spenta.">Tensione di ripartenza<small class="hint">1,10–1,50 V · 0 = spenta</small></label><div class="val"><input type="number" id="p_restartVolt" value="0" step="0.01" min="0" max="1.50" inputmode="decimal"><span class="unit">V</span></div></div>
     </div>
 
     <details class="adv">
@@ -947,7 +947,7 @@ const LIMITS = {
   capacity: [100, 5000], inStopVoltage: [1400, 1750], outStopVoltage: [900, 1200],
   inStopCurrent: [0, 300], outStopCurrent: [0, 2800], chargeRestTime: [0, 60],
   dischargeRestTime: [0, 60], cycleCount: [1, 10], cycleMode: [0, 3], detalV: [3, 15],
-  track: [0, 500], restartVolt: [0, 1500], tempProtect: [40, 65], inTimeProtect: [0, 360],
+  track: [0, 300], restartVolt: [0, 1500], tempProtect: [40, 65], inTimeProtect: [0, 360],
   inMaxbostCapacity: [100, 5000], truboMode: [0, 1]
 };
 
@@ -5522,7 +5522,8 @@ function setupInfo() {
     if (!anchor || !text) return;
     const b = document.createElement('button');
     b.type = 'button'; b.className = 'ibtn'; b.textContent = 'i'; b.dataset.info = text; b.setAttribute('aria-label', 'Spiegazione');
-    anchor.appendChild(b);
+    const sm = anchor.matches('label') ? anchor.querySelector(':scope > small') : null;   // nelle righe: subito dopo il nome
+    if (sm) anchor.insertBefore(b, sm); else anchor.appendChild(b);
   };
   document.querySelectorAll('p.hint:not([id])').forEach(pz => {
     if (pz.closest('#fwView') || pz.closest('[data-noinfo]')) return;
@@ -5535,7 +5536,7 @@ function setupInfo() {
     add(anchor, text);
     pz.remove();
   });
-  document.querySelectorAll('h2.sec[data-info]').forEach(h => { add(h, h.dataset.info); h.removeAttribute('data-info'); });
+  document.querySelectorAll('h2.sec[data-info], .row > label[data-info]').forEach(h => { add(h, h.dataset.info); h.removeAttribute('data-info'); });
 }
 function showInfo(btn) {
   let pop = document.getElementById('infoPop');
